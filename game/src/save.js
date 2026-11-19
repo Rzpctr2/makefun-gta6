@@ -12,6 +12,16 @@ export function saveGame(state) {
       cash: state.cash,
       seconds: Math.round(state.seconds),
       inCar: !!state.inCar,
+      mission: state.mission || 0,
+      rep: state.rep || 0,
+      completed: state.completed || 0,
+      raceWon: !!state.raceWon,
+      raceWins: state.raceWins || 0,
+      raceBest: state.raceBest || 0,
+      escapes: state.escapes || 0,
+      kills: state.kills || 0,
+      has_pistol: !!state.has_pistol,
+      has_smg: !!state.has_smg,
       savedAt: Date.now(),
     }));
     return true;

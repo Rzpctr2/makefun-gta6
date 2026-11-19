@@ -1,4 +1,4 @@
-// Staged screenshots behind ?shot=drive|street|aerial|start.
+// Staged screenshots behind ?shot=chase|street|drive|mission.
 // Each scene is the real game, not a mock: the world is built from the seed,
 // then a small autopilot plays it forward for a few seconds so the frame is
 // what a few seconds of real play looks like — and the same seed always
@@ -7,40 +7,44 @@
 import { CONFIG } from './config.js';
 
 // Where each shot begins. Coordinates are world metres; the plaza at (0,0)
-// is the city centre, the beach is east (+x).
+// is the city centre, the beach is east (+x). Times: chase = sunset 18:52,
+// street = golden hour 17:30, drive = neon night 21:00, mission = dawn 06:00.
+// mission = story mission index started by applyShot; skipTalk drops the
+// opening dialog so the HUD panel shows instead (street keeps it: the
+// dialog portrait IS the shot). wanted = stars forced at the start.
 export const SHOTS = {
-  // Cover: driving south down the avenue at x=-36 (a real road), traffic
-  // ahead, HUD + minimap live.
-  drive: {
+  // COVER: police chase at sunset, mission 6 "Sopir Pelarian" mid-escape,
+  // 4 stars + heli + roadblock, dispatch + mission panel + NEXT live.
+  chase: {
     mode: 'car',
     carX: -36, carZ: -120, carYaw: 0,
-    camYaw: 0, camPitch: 0.32,
+    camYaw: 0, camPitch: 0.28,
     autopilot: 'drive',
-    warmup: 6,
+    warmup: 6, hour: 18.87, wanted: 4, mission: 5,
   },
-  // On foot at the plaza, facing the beach towers.
+  // Golden hour on foot at the plaza, Nadia's dialog portrait open.
   street: {
     mode: 'foot',
     playerX: -6, playerZ: 10, playerYaw: Math.PI * 0.62,
     camYaw: Math.PI * 0.62, camPitch: 0.22,
     autopilot: 'walk',
-    warmup: 3,
+    warmup: 3, hour: 17.5, mission: 0, skipTalk: false,
   },
-  // High view over the city, beach and sea.
-  aerial: {
-    mode: 'aerial',
-    playerX: 0, playerZ: 0, playerYaw: 0,
-    camYaw: 0.6, camPitch: 0.9,
-    autopilot: null,
-    warmup: 1,
+  // Neon night drive, mission 2 "Paket Panas" on a timer, heli up (3 stars).
+  drive: {
+    mode: 'car',
+    carX: -36, carZ: -120, carYaw: 0,
+    camYaw: 0, camPitch: 0.32,
+    autopilot: 'drive',
+    warmup: 6, hour: 21, wanted: 3, mission: 1,
   },
-  // Title screen over a slow camera drift.
-  start: {
-    mode: 'menu',
-    playerX: 0, playerZ: 0, playerYaw: 0,
-    camYaw: 0.4, camPitch: 0.25,
+  // Dawn climax: Bank Solmarina, mission 8 hold-the-vault, SMG out, 5 stars.
+  mission: {
+    mode: 'foot',
+    playerX: 192, playerZ: 84, playerYaw: 2.0,
+    camYaw: 2.0, camPitch: 0.25,
     autopilot: null,
-    warmup: 1,
+    warmup: 3, hour: 6, wanted: 5, mission: 7, weapon: 'smg',
   },
 };
 

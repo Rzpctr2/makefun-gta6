@@ -4,6 +4,8 @@
 export const ACTION_ENTER = 1; // E: enter / exit a car
 export const ACTION_PAUSE = 2; // Esc / P: pause
 export const ACTION_CONFIRM = 4; // Enter / Space: start, resume
+export const ACTION_RADIO = 8; // Q: next radio station
+export const ACTION_MUTE = 16; // M: mute audio
 
 const FORWARD = new Set(['KeyW', 'ArrowUp']);
 const BACK = new Set(['KeyS', 'ArrowDown']);
@@ -25,6 +27,8 @@ export function createInput(canvas) {
     if (event.code === 'KeyE' && !event.repeat) actions |= ACTION_ENTER;
     else if ((event.code === 'Escape' || event.code === 'KeyP') && !event.repeat) actions |= ACTION_PAUSE;
     else if ((event.code === 'Enter' || event.code === 'Space') && !event.repeat) actions |= ACTION_CONFIRM;
+    else if (event.code === 'KeyQ' && !event.repeat) actions |= ACTION_RADIO;
+    else if (event.code === 'KeyM' && !event.repeat) actions |= ACTION_MUTE;
     keys.add(event.code);
     if (['ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight', 'Space'].includes(event.code)) {
       event.preventDefault();

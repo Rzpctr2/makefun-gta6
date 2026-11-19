@@ -38,6 +38,11 @@ export const CONFIG = {
   camDistanceFoot: 7.5,
   camDistanceCar: 11,
   camHeight: 3.2,
+  // Game feel: speed FOV + trauma shake (§5d).
+  fovBase: 62,
+  fovTop: 72,
+  traumaDecay: 1.5,
+  traumaKick: 0.15,
 };
 
 export const PALETTE = {

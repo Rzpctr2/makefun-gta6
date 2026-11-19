@@ -11,7 +11,7 @@ export class Minimap {
     this.size = canvas.width;
   }
 
-  draw(playerPos, playerYaw, traffic, peds, objective) {
+  draw(playerPos, playerYaw, traffic, peds, objective, police) {
     const ctx = this.ctx;
     const s = this.size;
     const half = CONFIG.citySize / 2;
@@ -46,9 +46,12 @@ export class Minimap {
       ctx.lineTo(x2, z2);
       ctx.stroke();
     }
-    // Objective marker (a pulsing diamond).
+    // Objective marker (a pulsing diamond) + GPS route (dashed line).
     if (objective) {
       const [ox, oz] = toMap(objective.x, objective.z);
+      const [px0, pz0] = toMap(playerPos.x, playerPos.z);
+      ctx.strokeStyle = 'rgba(242,201,76,0.85)'; ctx.lineWidth = 2; ctx.setLineDash([6, 4]);
+      ctx.beginPath(); ctx.moveTo(px0, pz0); ctx.lineTo(ox, oz); ctx.stroke(); ctx.setLineDash([]);
       const pulse = 4 + Math.sin(performance.now() / 250) * 1.5;
       ctx.fillStyle = '#f2c94c';
       ctx.beginPath();
@@ -72,6 +75,27 @@ export class Minimap {
       ctx.beginPath();
       ctx.arc(x, z, 2.5, 0, Math.PI * 2);
       ctx.fill();
+    }
+    // Police (blue dots) + search zone.
+    if (police && police.activeUnits().length) {
+      const [zx, zy] = toMap(police.zone.x, police.zone.z);
+      ctx.strokeStyle = 'rgba(42,106,255,0.7)'; ctx.lineWidth = 1.5;
+      ctx.beginPath(); ctx.arc(zx, zy, (police.zone.r / span) * s, 0, Math.PI * 2); ctx.stroke();
+      ctx.fillStyle = '#2a6aff';
+      for (const u of police.activeUnits()) {
+        const [x, z] = toMap(u.car.pos.x, u.car.pos.z);
+        ctx.beginPath(); ctx.arc(x, z, 3, 0, Math.PI * 2); ctx.fill();
+      }
+    }
+    // Heli (gold dot) + respray bay (teal ring).
+    if (police && police.heli && police.heli.on) {
+      const [hx, hz] = toMap(police.heli.group.position.x, police.heli.group.position.z);
+      ctx.fillStyle = '#f2c94c'; ctx.beginPath(); ctx.arc(hx, hz, 4, 0, Math.PI * 2); ctx.fill();
+    }
+    if (police && police.respray) {
+      const [rx, rz] = toMap(police.respray.x, police.respray.z);
+      ctx.strokeStyle = '#4fc3f7'; ctx.lineWidth = 2;
+      ctx.beginPath(); ctx.arc(rx, rz, 4, 0, Math.PI * 2); ctx.stroke();
     }
     // Player arrow (white, pointing along the heading).
     const [px, pz] = toMap(playerPos.x, playerPos.z);

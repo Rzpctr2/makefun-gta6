@@ -44,6 +44,8 @@ export function buildCarMesh(color) {
   return car;
 }
 
+export function repaintCar(car, color) { car.mesh.children[0].material.color.set(color); car.color = color; }
+
 export class Car {
   constructor(scene, color, x, z, yaw) {
     this.mesh = buildCarMesh(color);
@@ -55,11 +57,16 @@ export class Car {
     this.speed = 0;
     this.steer = 0;
     this.color = color;
+    this.maxSpeed = CONFIG.carMaxSpeed;
+    this.steerAuthority = 1;
   }
 
   // Arcade driving: throttle -1..1 (reverse allowed), steer -1..1.
   drive(throttle, steerInput, dt, city) {
-    const targetSteer = steerInput * CONFIG.carSteer;
+    // Steering retune (§5c): full lock at parking speed, half authority
+    // at top speed, yaw rate capped at 2.2 rad/s — no more go-kart turns.
+    const auth = this.steerAuthority * (1 - 0.5 * Math.min(1, Math.abs(this.speed) / this.maxSpeed));
+    const targetSteer = steerInput * CONFIG.carSteer * auth;
     this.steer += (targetSteer - this.steer) * Math.min(1, dt * 8);
     if (throttle > 0) this.speed += CONFIG.carAccel * throttle * dt;
     else if (throttle < 0) {
@@ -69,26 +76,32 @@ export class Car {
       // Rolling drag.
       this.speed -= Math.sign(this.speed) * Math.min(Math.abs(this.speed), 8 * dt);
     }
-    this.speed = Math.max(-CONFIG.carReverseMax, Math.min(CONFIG.carMaxSpeed, this.speed));
+    this.speed = Math.max(-CONFIG.carReverseMax, Math.min(this.maxSpeed, this.speed));
     if (Math.abs(this.speed) > 0.05) {
       // Bicycle-ish turn: yaw rate grows with steering and speed.
       const dir = Math.sign(this.speed);
-      this.yaw += (this.steer * this.speed * 0.055 * dir) * dt * 3.2;
+      let dy = (this.steer * this.speed * 0.055 * dir) * dt * 3.2;
+      const cap = 2.2 * dt;
+      this.yaw += Math.max(-cap, Math.min(cap, dy));
     }
     const fx = Math.sin(this.yaw);
     const fz = Math.cos(this.yaw);
     this.pos.x += fx * this.speed * dt;
     this.pos.z += fz * this.speed * dt;
-    city.collideCircle(this.pos, 2.1);
+    // Wall hit (§5c bug fix): the old code called collideCircle twice —
+    // the first call already pushed the car out, so the speed cut in the
+    // second call almost never fired. One call, cut on its return.
+    const speedBefore = this.speed;
+    const hit = city.collideCircle(this.pos, 2.1);
     city.clampToLand(this.pos);
-    // Bounce off buildings instead of sliding through them.
-    if (city.collideCircle(this.pos, 2.1)) this.speed *= 0.4;
+    if (hit) this.speed *= 0.55;
     this.mesh.rotation.y = this.yaw;
     // Wheel spin + front-wheel steer visuals.
     const spin = (this.speed * dt) / 0.36;
     for (const w of this.mesh.userData.wheels) w.rotation.x += spin;
     this.mesh.userData.wheels[0].rotation.y = this.steer * 0.5;
     this.mesh.userData.wheels[1].rotation.y = this.steer * 0.5;
+    return { hit, impact: Math.abs(speedBefore) };
   }
 }
 

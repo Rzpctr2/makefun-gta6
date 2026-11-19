@@ -1,5 +1,6 @@
 // Palma Verde — the entrypoint for make.fun's gta6-01 (Node 22, standard
-// library only). The game is this repository's game/ folder: plain static
+// library only). Phase 2 adds radio, dialog and missions 1-3 in game/src.
+// The game is this repository's game/ folder: plain static
 // files that a desktop browser loads offline (game/index.html and its ES
 // modules, three.js vendored as game/vendor/three.module.min.js, no network
 // request while playing). This program hands the entry in: it copies game/
@@ -24,6 +25,11 @@ cpSync(join(here, 'game'), join(out, 'game'), { recursive: true });
 mkdirSync(join(out, 'screenshots'), { recursive: true });
 if (existsSync(join(here, 'screenshots'))) {
   cpSync(join(here, 'screenshots'), join(out, 'screenshots'), { recursive: true });
+}
+// Phase 2 (langkah 12): ship the README beside the dossier so the entry
+// is self-describing even outside the repo.
+if (existsSync(join(here, 'README.md'))) {
+  cpSync(join(here, 'README.md'), join(out, 'README.md'));
 }
 
 // The scorer's own caps: only text_max_bytes shapes the bytes; the other

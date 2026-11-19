@@ -57,7 +57,7 @@ export class Pedestrians {
     group.rotation.y = yaw;
     scene.add(group);
     return {
-      group, legL, legR,
+      group, legL, legR, hp: 100, dead: false,
       pos: group.position, yaw,
       speed: range(rng, 1.1, 1.9),
       phase: rng() * Math.PI * 2,
