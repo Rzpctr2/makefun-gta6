@@ -1,0 +1,96 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<link rel="icon" href="data:,">
+<title>Palma Verde — an open-world crime game</title>
+<style>
+  html, body { margin: 0; height: 100%; overflow: hidden; background: #0c1218;
+    font-family: system-ui, -apple-system, "Segoe UI", sans-serif; color: #eef1f5; }
+  #game-canvas { position: fixed; inset: 0; width: 100%; height: 100%; display: block; touch-action: none; }
+  .hidden { display: none !important; }
+
+  /* --- HUD --- */
+  #hud { position: fixed; inset: 0; pointer-events: none; z-index: 5; }
+  #hud .panel { position: absolute; background: rgba(12, 18, 24, 0.55); border-radius: 10px;
+    padding: 8px 12px; backdrop-filter: blur(2px); }
+  #cash-panel { top: 14px; left: 14px; font-size: 22px; font-weight: 700; color: #7ddb8a; }
+  #clock { font-size: 13px; color: #c9d4de; font-weight: 600; }
+  #wanted-panel { top: 14px; right: 14px; text-align: right; }
+  #stars { font-size: 22px; letter-spacing: 3px; color: #f2c94c; }
+  #stars.hot { color: #ff5a4e; }
+  #wanted-label { font-size: 12px; font-weight: 800; letter-spacing: 2px; color: #ff5a4e; }
+  #minimap { position: absolute; top: 86px; right: 14px; width: 168px; height: 168px;
+    border-radius: 50%; border: 3px solid rgba(238, 241, 245, 0.7); background: #20262e; }
+  #objective { bottom: 64px; left: 50%; transform: translateX(-50%); font-size: 15px; font-weight: 600;
+    max-width: 640px; text-align: center; white-space: nowrap; }
+  #speed { bottom: 14px; right: 14px; font-size: 26px; font-weight: 800; }
+  #hint { bottom: 14px; left: 14px; font-size: 12px; color: #c9d4de; }
+  #toast { top: 96px; left: 50%; transform: translateX(-50%); font-size: 15px; font-weight: 600;
+    background: rgba(12, 18, 24, 0.7); padding: 8px 16px; border-radius: 8px;
+    opacity: 0; transition: opacity 0.3s; }
+  #toast.show { opacity: 1; }
+  #load-error { position: fixed; bottom: 0; left: 0; color: #ff5a4e; font-size: 12px; z-index: 50; }
+
+  /* --- screens --- */
+  .screen { position: fixed; inset: 0; z-index: 10; display: flex; flex-direction: column;
+    align-items: center; justify-content: center; text-align: center;
+    background: linear-gradient(180deg, rgba(8, 20, 32, 0.25) 0%, rgba(8, 20, 32, 0.78) 78%); }
+  .screen h1 { font-size: 64px; margin: 0; letter-spacing: 8px; color: #fff;
+    text-shadow: 0 4px 24px rgba(0, 0, 0, 0.6); }
+  .screen h1 .accent { color: #f2c94c; }
+  .screen p.tag { font-size: 17px; color: #dfe8ef; margin: 10px 0 26px; max-width: 560px; }
+  .screen .controls { font-size: 14px; color: #c9d4de; line-height: 1.9; margin-bottom: 26px; }
+  .screen button { pointer-events: auto; font-size: 18px; font-weight: 700; padding: 12px 34px;
+    margin: 4px; border: none; border-radius: 10px; cursor: pointer;
+    background: #f2c94c; color: #20262e; }
+  .screen button.secondary { background: rgba(238, 241, 245, 0.16); color: #eef1f5;
+    border: 1px solid rgba(238, 241, 245, 0.5); }
+  .screen button:hover { filter: brightness(1.1); }
+  .screen h2 { font-size: 40px; margin: 0 0 18px; letter-spacing: 4px; }
+</style>
+<script type="importmap">
+  { "imports": { "three": "./vendor/three.module.min.js" } }
+</script>
+</head>
+<body>
+<canvas id="game-canvas" aria-label="Palma Verde: explore the city on foot and by car"></canvas>
+
+<div id="hud">
+  <div class="panel" id="cash-panel"><span id="cash">$250</span><br><span id="clock">09:00</span></div>
+  <div class="panel" id="wanted-panel"><span id="wanted-label"></span><br><span id="stars">☆☆☆☆☆</span></div>
+  <canvas id="minimap" width="168" height="168"></canvas>
+  <div class="panel" id="objective">Explore Palma Verde — walk up to a car and press E to drive it.</div>
+  <div class="panel" id="speed">0 km/h</div>
+  <div class="panel" id="hint">W A S D — walk · Shift — run · E — enter car · drag mouse — look · Esc — pause</div>
+  <div id="toast"></div>
+</div>
+
+<div class="screen" id="start-screen">
+  <h1>PALMA <span class="accent">VERDE</span></h1>
+  <p class="tag">A sun-soaked coastal city. One newcomer, Leo Marin, with $250 in his
+    pocket and the whole map open. Walk it, drive it — make it yours.</p>
+  <div class="controls">
+    W A S D — move / drive &nbsp;·&nbsp; Shift — run &nbsp;·&nbsp; E — enter / leave a car<br>
+    Drag mouse — look around &nbsp;·&nbsp; Esc — pause &nbsp;·&nbsp; progress saves automatically
+  </div>
+  <div>
+    <button id="start-btn">New game</button>
+    <button id="continue-btn" class="secondary hidden">Continue</button>
+  </div>
+</div>
+
+<div class="screen hidden" id="pause-screen">
+  <h2>PAUSED</h2>
+  <p class="tag">Palma Verde waits. Your progress is saved.</p>
+  <div>
+    <button id="resume-btn">Resume</button>
+    <button id="restart-btn" class="secondary">Restart from the plaza</button>
+  </div>
+</div>
+
+<p id="load-error"></p>
+<script type="module" src="./src/main.js"></script>
+</body>
+</html>
