@@ -1,34 +1,46 @@
-// Deterministic random numbers (mulberry32), so the city layout, the traffic
-// colours and the pedestrian outfits are the same for a given seed.
-// Runtime gameplay still uses Math.random where variety matters.
+// Seeded randomness for the world. One compact generator (mulberry32) plus
+// a handful of draw helpers, so a given seed always rebuilds the same city,
+// the same traffic colours and the same pedestrian outfits. Live gameplay
+// still reaches for Math.random wherever it wants a surprise.
 export function mulberry32(seed) {
-  let a = seed >>> 0;
+  let state = seed >>> 0;
+  const STEP = 0x6d2b79f5;
+  const SCALE = 4294967296;
   return function () {
-    a |= 0;
-    a = (a + 0x6d2b79f5) | 0;
-    let t = Math.imul(a ^ (a >>> 15), 1 | a);
-    t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t;
-    return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+    state |= 0;
+    state = (state + STEP) | 0;
+    // First scramble: multiply the state by itself shifted, keyed on its
+    // own low bit, then fold the product back into itself.
+    const scrambled = Math.imul(state ^ (state >>> 15), 1 | state);
+    const folded =
+      (scrambled + Math.imul(scrambled ^ (scrambled >>> 7), 61 | scrambled)) ^
+      scrambled;
+    return ((folded ^ (folded >>> 14)) >>> 0) / SCALE;
   };
 }
 
+// A float in [min, max): one draw from the generator.
 export function range(rng, min, max) {
   return min + rng() * (max - min);
 }
 
+// An integer in [min, max], both ends included: one draw.
 export function rangeInt(rng, min, max) {
   return Math.floor(range(rng, min, max + 1));
 }
 
+// One element of a list, chosen by a single draw.
 export function pick(rng, list) {
   return list[Math.floor(rng() * list.length)];
 }
 
-// A tiny shuffle that reuses the same seeded rng.
+// Fisher-Yates, driven by the same seeded generator, in place.
 export function shuffle(rng, list) {
   for (let i = list.length - 1; i > 0; i--) {
     const j = Math.floor(rng() * (i + 1));
-    [list[i], list[j]] = [list[j], list[i]];
+    const held = list[i];
+    list[i] = list[j];
+    list[j] = held;
   }
   return list;
 }

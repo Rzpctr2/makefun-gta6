@@ -1,27 +1,29 @@
 // Palma Verde, the city itself: a procedural coastal grid built once from a
-// seed. Buildings, palms and lamps are InstancedMeshes (a few draw calls for
-// the whole city); the ground is one painted plane; the sea is a scrolling
-// water plane. This module also owns the collision boxes and the road graph
-// that traffic and pedestrians drive on.
+// seed. Buildings, palms and lamps are InstancedMeshes — a few draw calls
+// for the whole city — the ground is one painted plane and the sea is a
+// scrolling water plane. This module also owns the collision boxes and the
+// road graph that traffic and pedestrians drive on.
 import * as THREE from 'three';
 import { CONFIG, PALETTE } from './config.js';
 import { mulberry32, range, rangeInt, pick } from './rng.js';
 import { facadeTexture, roofTexture, groundTexture, waterTexture } from './textures.js';
 
+// Wall colour first, shopfront trim second. The index is the facade
+// variant a tower is assigned when it is placed.
 const FACADE_SETS = [
-  ['#e8b48a', '#7a5a3a'],
-  ['#dfe6ea', '#5a6a75'],
-  ['#f0d9a0', '#8a6a3a'],
-  ['#c9a0a0', '#6a4a4a'],
-  ['#a8c8b8', '#4a6a5a'],
+  { wall: '#e8b48a', trim: '#7a5a3a' },
+  { wall: '#dfe6ea', trim: '#5a6a75' },
+  { wall: '#f0d9a0', trim: '#8a6a3a' },
+  { wall: '#c9a0a0', trim: '#6a4a4a' },
+  { wall: '#a8c8b8', trim: '#4a6a5a' },
 ];
 
 export class City {
   constructor(scene, seed) {
     this.scene = scene;
     this.rng = mulberry32(seed);
-    this.buildings = []; // {minX,maxX,minZ,maxZ} — collision boxes
-    this.roads = []; // road centre lines, in metres: {axis:'x'|'z', at:number}
+    this.buildings = []; // {minX, maxX, minZ, maxZ, h} — collision boxes
+    this.roads = []; // road centre lines, in metres: {axis: 'x' | 'z', at}
     this.group = new THREE.Group();
     scene.add(this.group);
     this.buildGround();
@@ -39,7 +41,7 @@ export class City {
     const mat = new THREE.MeshLambertMaterial({ map: groundTexture() });
     const ground = new THREE.Mesh(geo, mat);
     ground.rotation.x = -Math.PI / 2;
-    // Ground plane is centred on the city; shift east so the beach is covered.
+    // The plane is centred on the city; nudge it east so the beach is covered.
     ground.position.x = (beachWidth + 40) / 2 - 20;
     ground.receiveShadow = true;
     this.group.add(ground);
@@ -61,28 +63,23 @@ export class City {
   }
 
   // --- buildings ----------------------------------------------------------
-  buildBuildings() {
+  // Decide where every tower goes, in block order. This is the only place
+  // that draws building numbers from the seed, so the layout is fixed by
+  // it: count, footprint, position, height and facade variant, in that order.
+  planTowers() {
     const { pitch, blockSize, blocks, buildingGap } = CONFIG;
     const half = CONFIG.citySize / 2;
     const rng = this.rng;
-    const boxGeo = new THREE.BoxGeometry(1, 1, 1);
-    boxGeo.translate(0, 0.5, 0); // scale y = height, base sits on the ground
-    const facadeMats = FACADE_SETS.map(
-      ([base, trim]) => new THREE.MeshLambertMaterial({ map: facadeTexture(base, trim) }),
-    );
-    const roofMat = new THREE.MeshLambertMaterial({ map: roofTexture() });
-    // One InstancedMesh per facade variant; a roof box rides on each building.
-    const placements = [[], [], [], [], []];
+    const byFacade = FACADE_SETS.map(() => []);
     const roofs = [];
+    const middle = (blocks - 1) / 2;
     for (let bx = 0; bx < blocks; bx++) {
       for (let bz = 0; bz < blocks; bz++) {
-        const centre = bx === (blocks - 1) / 2 && bz === (blocks - 1) / 2;
-        if (centre) continue; // the plaza stays open
+        if (bx === middle && bz === middle) continue; // the plaza stays open
         const x0 = -half + bx * pitch + buildingGap;
         const z0 = -half + bz * pitch + buildingGap;
         const w = blockSize - buildingGap * 2;
-        // 1–3 towers per block, placed on a jittered sub-grid.
-        const count = rangeInt(rng, 1, 3);
+        const count = rangeInt(rng, 1, 3); // 1–3 towers per block
         for (let k = 0; k < count; k++) {
           const tw = range(rng, w * 0.36, w * 0.6);
           const td = range(rng, w * 0.36, w * 0.6);
@@ -97,15 +94,29 @@ export class City {
             CONFIG.buildingMaxH * (1.15 - distC * 0.55) * (0.7 + beachBoost * 0.45),
           );
           const variant = rangeInt(rng, 0, FACADE_SETS.length - 1);
-          placements[variant].push({ x: px + tw / 2, z: pz + td / 2, w: tw, d: td, h });
-          roofs.push({ x: px + tw / 2, z: pz + td / 2, w: tw, d: td, h });
+          const tower = { x: px + tw / 2, z: pz + td / 2, w: tw, d: td, h };
+          byFacade[variant].push(tower);
+          roofs.push(tower);
           this.buildings.push({ minX: px, maxX: px + tw, minZ: pz, maxZ: pz + td, h });
         }
       }
     }
+    return { byFacade, roofs };
+  }
+
+  buildBuildings() {
+    const { byFacade, roofs } = this.planTowers();
+    const rng = this.rng;
+    const boxGeo = new THREE.BoxGeometry(1, 1, 1);
+    boxGeo.translate(0, 0.5, 0); // scale y = height, base sits on the ground
+    const facadeMats = FACADE_SETS.map(
+      ({ wall, trim }) => new THREE.MeshLambertMaterial({ map: facadeTexture(wall, trim) }),
+    );
+    const roofMat = new THREE.MeshLambertMaterial({ map: roofTexture() });
     const dummy = new THREE.Object3D();
     const colour = new THREE.Color();
-    placements.forEach((list, vi) => {
+    // One InstancedMesh per facade variant; a roof box rides on each tower.
+    byFacade.forEach((list, vi) => {
       if (!list.length) return;
       const mesh = new THREE.InstancedMesh(boxGeo, facadeMats[vi], list.length);
       list.forEach((b, i) => {
@@ -114,7 +125,7 @@ export class City {
         dummy.rotation.set(0, 0, 0);
         dummy.updateMatrix();
         mesh.setMatrixAt(i, dummy.matrix);
-        // Slight per-building tint so the facades do not look cloned.
+        // A slight per-tower tint so the facades do not look cloned.
         colour.setHSL(0.08 + rng() * 0.04, 0.08, 0.92 + rng() * 0.08);
         mesh.setColorAt(i, colour);
       });
@@ -122,7 +133,7 @@ export class City {
       mesh.receiveShadow = true;
       this.group.add(mesh);
     });
-    // Roof caps (one instanced thin box per building, slightly wider).
+    // Roof caps: one instanced thin box per tower, slightly wider than it.
     const roofGeo = new THREE.BoxGeometry(1, 1, 1);
     roofGeo.translate(0, 0.5, 0);
     const roofMesh = new THREE.InstancedMesh(roofGeo, roofMat, roofs.length);
@@ -137,29 +148,35 @@ export class City {
   }
 
   // --- props: palms along the beach and sidewalks, street lamps -----------
+  // Where every palm stands. Beach row first, then sparse sidewalk corners.
+  planPalms() {
+    const rng = this.rng;
+    const half = CONFIG.citySize / 2;
+    const spots = [];
+    for (let z = -half + 16; z < half - 8; z += 14) {
+      spots.push({ x: half + 8 + rng() * 18, z: z + rng() * 6 });
+    }
+    for (let i = 0; i < 46; i++) {
+      const bx = rangeInt(rng, 0, CONFIG.blocks - 1);
+      const bz = rangeInt(rng, 0, CONFIG.blocks - 1);
+      const x = -half + bx * CONFIG.pitch + pick(rng, [2, CONFIG.blockSize - 2]);
+      const z = -half + bz * CONFIG.pitch + pick(rng, [2, CONFIG.blockSize - 2]);
+      spots.push({ x, z });
+    }
+    return spots;
+  }
+
   buildProps() {
     const rng = this.rng;
     const half = CONFIG.citySize / 2;
-    // Palm trunks + canopies, instanced.
+    // Palm trunks and canopies, instanced from the planned spots.
     const trunkGeo = new THREE.CylinderGeometry(0.18, 0.3, 5.5, 6);
     trunkGeo.translate(0, 2.75, 0);
     const trunkMat = new THREE.MeshLambertMaterial({ color: 0x8a6a44 });
     const canopyGeo = new THREE.ConeGeometry(2.6, 2.2, 7);
     canopyGeo.translate(0, 6.2, 0);
     const canopyMat = new THREE.MeshLambertMaterial({ color: 0x3f8f4f });
-    const palmSpots = [];
-    // Beach row.
-    for (let z = -half + 16; z < half - 8; z += 14) {
-      palmSpots.push({ x: half + 8 + rng() * 18, z: z + rng() * 6 });
-    }
-    // Sidewalk corners, sparse.
-    for (let i = 0; i < 46; i++) {
-      const bx = rangeInt(rng, 0, CONFIG.blocks - 1);
-      const bz = rangeInt(rng, 0, CONFIG.blocks - 1);
-      const x = -half + bx * CONFIG.pitch + pick(rng, [2, CONFIG.blockSize - 2]);
-      const z = -half + bz * CONFIG.pitch + pick(rng, [2, CONFIG.blockSize - 2]);
-      palmSpots.push({ x, z });
-    }
+    const palmSpots = this.planPalms();
     const dummy = new THREE.Object3D();
     const trunks = new THREE.InstancedMesh(trunkGeo, trunkMat, palmSpots.length);
     const canopies = new THREE.InstancedMesh(canopyGeo, canopyMat, palmSpots.length);
@@ -174,13 +191,18 @@ export class City {
     trunks.castShadow = true;
     this.group.add(trunks);
     this.group.add(canopies);
-    // Street lamps: pole + warm head, along road edges.
+    // Street lamps: pole plus warm head, along the edges of the east–west
+    // roads.
     const poleGeo = new THREE.CylinderGeometry(0.09, 0.12, 5, 6);
     poleGeo.translate(0, 2.5, 0);
     const poleMat = new THREE.MeshLambertMaterial({ color: 0x2c313a });
     const headGeo = new THREE.SphereGeometry(0.28, 8, 6);
     headGeo.translate(0, 5.1, 0);
-    const headMat = new THREE.MeshLambertMaterial({ color: 0xffe9a8, emissive: 0xffdf8a, emissiveIntensity: 0.7 });
+    const headMat = new THREE.MeshLambertMaterial({
+      color: 0xffe9a8,
+      emissive: 0xffdf8a,
+      emissiveIntensity: 0.7,
+    });
     const lampSpots = [];
     for (const r of this.roads) {
       if (r.axis !== 'x') continue;
