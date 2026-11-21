@@ -1,34 +1,59 @@
-// Districts: 6 named areas + 2 landmarks. districtAt() is pure position
-// lookup; the banner fires once per entry. Landmarks are cheap shared-geo
-// meshes so the skyline reads from far away.
-import * as THREE from 'three';
+// Six named districts tile the whole map, plus the landmarks that make the
+// skyline readable from far away. districtAt() is a pure position lookup;
+// the HUD banner fires once per entry. Nothing here builds meshes — city.js
+// reads LANDMARKS and places the geometry.
+
 export const DISTRICTS = [
-  { name: 'Pelabuhan Solmar', x: 220, z: -40, r: 90, tint: 0x2e7fa8 },
-  { name: 'Boulevard Palma', x: 0, z: -180, r: 110, tint: 0xf2c94c },
-  { name: 'Casco Viejo', x: -140, z: 60, r: 100, tint: 0xe8b48a },
-  { name: 'La Rosa', x: 80, z: 160, r: 95, tint: 0xff5a8a },
-  { name: 'Bukit Marisol', x: -180, z: -180, r: 90, tint: 0x7fb069 },
-  { name: 'Mercado', x: 140, z: -140, r: 85, tint: 0x4fc3f7 },
+  {
+    id: 'harbor', name: 'Pelabuhan Solmar', blurb: 'pier · lighthouse · fishing boats',
+    x0: -162, z0: -162, x1: -72, z1: 72, tint: '#5e8a7b',
+  },
+  {
+    id: 'casco', name: 'Casco Viejo', blurb: 'old town · plaza fountain',
+    x0: -72, z0: -162, x1: 36, z1: -36, tint: '#c9a37e',
+  },
+  {
+    id: 'marisol', name: 'Bukit Marisol', blurb: 'hillside villas',
+    x0: 36, z0: -162, x1: 162, z1: -36, tint: '#d8b48a',
+  },
+  {
+    id: 'boulevard', name: 'Boulevard Palma', blurb: 'ferris wheel · palm rows',
+    x0: -72, z0: -36, x1: 36, z1: 72, tint: '#f2c94c',
+  },
+  {
+    id: 'larosa', name: 'La Rosa', blurb: 'neon district · clock tower',
+    x0: 36, z0: -36, x1: 162, z1: 72, tint: '#ff5a8a',
+  },
+  {
+    id: 'mercado', name: 'Mercado', blurb: 'open-air fish market',
+    x0: -162, z0: 72, x1: 162, z1: 162, tint: '#c96f4a',
+  },
 ];
+
 export function districtAt(x, z) {
-  let best = null, bd = Infinity;
-  for (const d of DISTRICTS) { const dd = Math.hypot(x - d.x, z - d.z); if (dd < bd) { bd = dd; best = d; } }
-  return bd < best.r + 60 ? best : null;
-}
-export class Landmarks {
-  constructor(scene) {
-    const g = new THREE.Group();
-    const mat = (c, e = 0) => new THREE.MeshLambertMaterial({ color: c, emissive: e });
-    const light = new THREE.Mesh(new THREE.CylinderGeometry(2.2, 3, 26, 8), mat(0xe8e4d8));
-    light.position.set(238, 13, -40); g.add(light);
-    const cap = new THREE.Mesh(new THREE.CylinderGeometry(2.8, 2.8, 2, 8), mat(0xd23c2e, 0x8a1a10));
-    cap.position.set(238, 27, -40); g.add(cap);
-    const wheel = new THREE.Mesh(new THREE.TorusGeometry(16, 1.1, 8, 24), mat(0xf2c94c, 0x664400));
-    wheel.position.set(0, 22, -196); g.add(wheel);
-    const leg = new THREE.Mesh(new THREE.BoxGeometry(2, 22, 2), mat(0x2c313a));
-    leg.position.set(0, 11, -196); g.add(leg);
-    const neon = new THREE.Mesh(new THREE.BoxGeometry(14, 2.4, 1), mat(0xff5a8a, 0xff5a8a));
-    neon.position.set(80, 18, 130); g.add(neon);
-    scene.add(g); this.group = g;
+  for (const d of DISTRICTS) {
+    if (x >= d.x0 && x < d.x1 && z >= d.z0 && z < d.z1) return d;
   }
+  return DISTRICTS[3];
+}
+
+// Landmarks are placed by city.js; each entry names the mesh kind it needs.
+export const LANDMARKS = [
+  { kind: 'pier', x: -150, z: -100 },
+  { kind: 'lighthouse', x: -156, z: -118 },
+  { kind: 'fountain', x: -18, z: -99 },
+  { kind: 'ferris', x: 0, z: 18 },
+  { kind: 'clocktower', x: 108, z: 18 },
+  { kind: 'market', x: 0, z: 126 },
+  { kind: 'villas', x: 120, z: -120 },
+];
+
+export function landmarkNear(x, z, radius = 14) {
+  let best = null;
+  let bestD = radius;
+  for (const mark of LANDMARKS) {
+    const d = Math.hypot(mark.x - x, mark.z - z);
+    if (d < bestD) { best = mark; bestD = d; }
+  }
+  return best;
 }

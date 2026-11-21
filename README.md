@@ -1,69 +1,78 @@
 [![make.fun · gta6-01](https://make.fun/badge/gta6-01.svg)](https://make.fun/bounty/gta6-01?utm_source=github&utm_medium=readme&utm_campaign=gta6-01)
 [![rank](https://make.fun/badge/gta6-01/Rzpctr2/makefun-gta6/rank.svg)](https://make.fun/bounty/gta6-01/leaderboard?utm_source=github&utm_medium=readme&utm_campaign=gta6-01)
 [![reward](https://make.fun/badge/gta6-01/Rzpctr2/makefun-gta6/reward.svg)](https://make.fun/bounty/gta6-01?utm_source=github&utm_medium=readme&utm_campaign=gta6-01)
-# Palma Verde — an open-world crime game
+# Palma Verde
 
-[![make.fun](https://img.shields.io/badge/make.fun-gta6--01-f2c94c)](https://make.fun/bounty/gta6-01)
-[![Palma Verde](https://img.shields.io/badge/Palma%20Verde-Phase%202-2e7fa8)](https://make.fun/bounty/gta6-01)
-[![status](https://img.shields.io/badge/status-playable-brightgreen)](https://make.fun/bounty/gta6-01)
+An open-world crime game for the [make.fun gta6-01 bounty](https://make.fun/bounty/gta6-01).
+You are **Leo Marin**, fresh off the ferry with $250 and no friends in a
+sun-soaked coastal city. Every street is open. What you do with it is yours.
 
-A sun-soaked coastal city. One newcomer, **Leo Marin**, with $250 in his
-pocket and the whole map open. Walk it, drive it — make it yours.
+All names, people and places are original: Palma Verde, Leo Marin, Nadia Sol,
+Kiko, Ilsa Maren. Nothing here is copied from any existing game.
 
-Entry for the [make.fun gta6-01 bounty](https://make.fun/bounty/gta6-01):
-build an open-world crime game. All names, characters and places are
-original — Palma Verde, Leo Marin, Nadia Sol, Kiko, Ilsa Maren.
-
-## Play it
+## Run it
 
 ```sh
 node serve.ts
 # open http://localhost:8080
 ```
 
-No build step, no network while playing: the game is plain static files
-(`game/index.html` + ES modules, Three.js vendored as
-`game/vendor/three.module.min.js`).
+No build step and no network while playing. The game is static files:
+`game/index.html` plus ES modules, with Three.js vendored at
+`game/vendor/three.module.min.js`.
 
-## Controls
+## How to play
 
-- **W A S D** — move / drive · **Shift** — run · **E** — enter / leave a car
-- **Drag mouse** — look around · **Esc** — pause (progress dashboard)
-- **Q** — radio station · **M** — mute · **1 / 2 / 3** — Fists / Pistol / SMG
-- **F** or click — shoot · **R** — reload
+| Keys | Does what |
+|---|---|
+| **W A S D** | Walk, or drive when you're in a car |
+| **Shift** | Run |
+| **E** | Get in / out of a car |
+| **Drag mouse** | Look around |
+| **F** or click | Shoot |
+| **R** | Reload |
+| **1 / 2 / 3** | Fists / Pistol / SMG |
+| **Q** | Change radio station · **M** mute |
+| **Esc** | Pause — map, missions, progress, saves |
 
-## What's inside
+## What the city has
 
-- **8 story missions** (data-driven engine: talk / reach / hold / combat /
-  escape), par-time bonus $250, auto-advance, fail = retry, never game over
-- **Street race side job** — Palma Verde Grand Loop, 7 checkpoints, 2 rivals,
-  $1,000 + par bonus, repeatable; counts toward % COMPLETE
-- **Wanted + police** — heat 0–100, 5 stars, 8 pursuit units with call signs,
-  helicopter spotlight (3+ stars), roadblocks, "Fresh Coat" respray bay ($150)
-- **Pause dashboard** — live map, mission grid, % COMPLETE
-  (10% per mission + 10% race win + 10% for 5 escapes), stats, save slots
-  via localStorage (autosave every 20 s + on pause)
-- **Radio + procedural SFX** — 3 stations, 18 synthesized sounds, no audio files
-- **Sunset / neon / dawn lighting** — 4 times of day, 6 named districts
-  with landmarks, live minimap with GPS route to the objective
-- **Combat** — hitscan, lock-on assist, tracers, 3 weapons (SMG unlocks
-  after mission 5)
+- **8 story missions** on a small data-driven engine (talk, reach, hold,
+  combat, escape). A $250 par-time bonus per mission, the next one starts
+  itself, failing just retries — there is no game over.
+- **Palma Verde Grand Loop**, a street race side job: 7 checkpoints, two
+  rubber-banded rivals, $1,000 for the win plus the par bonus, repeatable,
+  and it counts toward % COMPLETE.
+- **Wanted system and police**: heat 0–100 across 5 stars, 8 pursuit units
+  with their own call signs, a helicopter spotlight once you hit 3 stars,
+  roadblocks, and a "Fresh Coat" respray bay ($150) to cool off.
+- **Pause dashboard**: a live map, the mission grid, % COMPLETE (10% per
+  mission, 10% for a race win, 10% for five escapes), stats, and save slots
+  in localStorage (autosave every 20 s and on pause).
+- **Radio and sound**: 3 stations and 18 synthesized effects, all generated
+  in code — there are no audio files in the repo.
+- **A city that changes light**: four times of day from dawn to neon night,
+  six named districts with landmarks, and a minimap that draws a GPS route
+  to your objective.
+- **Combat**: hitscan shooting with a lock-on assist, tracers, and three
+  weapons — the SMG unlocks after mission 5.
 
 ## Screenshots
 
-Rendered headless from the real game (`?shot=` + seed 7, no edits):
+All four were rendered headless from the real game (`?shot=` with seed 7,
+no edits):
 
-| File | Shot |
+| File | What it shows |
 |---|---|
 | `1-chase.jpg` | Sunset police chase, mission 6, 4 stars (cover) |
 | `2-street.jpg` | Golden-hour plaza, Nadia's dialog portrait |
 | `3-drive.jpg` | Neon night drive, mission 2 on a timer, heli up |
 | `4-mission.jpg` | Dawn at Bank Solmarina, mission 8, SMG out, 5 stars |
 
-## Layout
+## Files
 
-- `game/` — the game (`index.html`, `src/*.js`, `vendor/`)
-- `main.ts` — builds `/output/dossier.json` for the judge
-  (`MAKEFUN_OUTPUT_DIR=out node main.ts`)
-- `serve.ts` — static dev server on port 8080
-- `shots.json` — the 4 staged screenshots and their queries
+- `game/` — the game itself (`index.html`, `src/*.js`, `vendor/`)
+- `main.ts` — builds `/output/dossier.json` for the judge:
+  `MAKEFUN_OUTPUT_DIR=out node main.ts`
+- `serve.ts` — the static dev server on port 8080
+- `shots.json` — the four staged screenshots and the queries that made them

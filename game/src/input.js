@@ -1,94 +1,106 @@
-// Keyboard + mouse input. Held keys are read every frame; one-shot presses
-// (enter car, pause, confirm) are queued as flags and taken once by the loop,
-// so a press between two frames is never lost or counted twice.
-export const ACTION_ENTER = 1; // E: enter / exit a car
-export const ACTION_PAUSE = 2; // Esc / P: pause
-export const ACTION_CONFIRM = 4; // Enter / Space: start, resume
-export const ACTION_RADIO = 8; // Q: next radio station
-export const ACTION_MUTE = 16; // M: mute audio
+// Keyboard + mouse look, kept as one tiny module so the game loop never
+// touches DOM events directly. Keys are read by code ("KeyW"), edges are
+// consumed once ("KeyE" fires a single enter-car action, not one per frame).
 
-const FORWARD = new Set(['KeyW', 'ArrowUp']);
-const BACK = new Set(['KeyS', 'ArrowDown']);
-const LEFT = new Set(['KeyA', 'ArrowLeft']);
-const RIGHT = new Set(['KeyD', 'ArrowRight']);
-const RUN = new Set(['ShiftLeft', 'ShiftRight']);
+const CODE = {
+  forward: 'KeyW',
+  back: 'KeyS',
+  left: 'KeyA',
+  right: 'KeyD',
+  run: 'ShiftLeft',
+  runAlt: 'ShiftRight',
+  action: 'KeyE',
+  shoot: 'KeyF',
+  reload: 'KeyR',
+  radio: 'KeyQ',
+  mute: 'KeyM',
+  pause: 'Escape',
+  confirm: 'Enter',
+  weapon1: 'Digit1',
+  weapon2: 'Digit2',
+  weapon3: 'Digit3',
+};
 
 export function createInput(canvas) {
-  const keys = new Set();
-  let actions = 0;
-  // Mouse drag orbits the camera.
+  const held = new Set();
+  const edges = new Set();
+  let lookDx = 0;
+  let lookDy = 0;
   let dragging = false;
   let lastX = 0;
   let lastY = 0;
-  let dragDX = 0;
-  let dragDY = 0;
+  let pointerDown = false;
 
-  window.addEventListener('keydown', (event) => {
-    if (event.code === 'KeyE' && !event.repeat) actions |= ACTION_ENTER;
-    else if ((event.code === 'Escape' || event.code === 'KeyP') && !event.repeat) actions |= ACTION_PAUSE;
-    else if ((event.code === 'Enter' || event.code === 'Space') && !event.repeat) actions |= ACTION_CONFIRM;
-    else if (event.code === 'KeyQ' && !event.repeat) actions |= ACTION_RADIO;
-    else if (event.code === 'KeyM' && !event.repeat) actions |= ACTION_MUTE;
-    keys.add(event.code);
-    if (['ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight', 'Space'].includes(event.code)) {
-      event.preventDefault();
-    }
-  });
-  window.addEventListener('keyup', (event) => keys.delete(event.code));
-  window.addEventListener('blur', () => keys.clear());
-
-  canvas.addEventListener('pointerdown', (event) => {
+  function onKeyDown(event) {
+    if (event.repeat) return;
+    held.add(event.code);
+    edges.add(event.code);
+    if (['Space', 'ArrowUp', 'ArrowDown'].includes(event.code)) event.preventDefault();
+  }
+  function onKeyUp(event) {
+    held.delete(event.code);
+  }
+  function onPointerDown(event) {
     dragging = true;
+    pointerDown = true;
     lastX = event.clientX;
     lastY = event.clientY;
-    canvas.setPointerCapture(event.pointerId);
-  });
-  canvas.addEventListener('pointermove', (event) => {
+  }
+  function onPointerMove(event) {
     if (!dragging) return;
-    dragDX += event.clientX - lastX;
-    dragDY += event.clientY - lastY;
+    lookDx += event.clientX - lastX;
+    lookDy += event.clientY - lastY;
     lastX = event.clientX;
     lastY = event.clientY;
-  });
-  const endDrag = () => { dragging = false; };
-  canvas.addEventListener('pointerup', endDrag);
-  canvas.addEventListener('pointercancel', endDrag);
+  }
+  function onPointerUp() {
+    dragging = false;
+    pointerDown = false;
+  }
+
+  window.addEventListener('keydown', onKeyDown);
+  window.addEventListener('keyup', onKeyUp);
+  canvas.addEventListener('pointerdown', onPointerDown);
+  window.addEventListener('pointermove', onPointerMove);
+  window.addEventListener('pointerup', onPointerUp);
 
   return {
-    // Camera-relative move vector for on-foot play: x = strafe, z = forward.
-    moveVector() {
-      let x = 0;
-      let z = 0;
-      if ([...FORWARD].some((k) => keys.has(k))) z += 1;
-      if ([...BACK].some((k) => keys.has(k))) z -= 1;
-      if ([...LEFT].some((k) => keys.has(k))) x -= 1;
-      if ([...RIGHT].some((k) => keys.has(k))) x += 1;
-      return { x, z, run: [...RUN].some((k) => keys.has(k)) };
+    // Held-state axis in [-1, 1] for driving and walking.
+    axis() {
+      const x = (held.has(CODE.right) ? 1 : 0) - (held.has(CODE.left) ? 1 : 0);
+      const y = (held.has(CODE.forward) ? 1 : 0) - (held.has(CODE.back) ? 1 : 0);
+      return { x, y };
     },
-    // Driving: throttle -1..1, steer -1..1.
-    driveVector() {
-      let throttle = 0;
-      if ([...FORWARD].some((k) => keys.has(k))) throttle += 1;
-      if ([...BACK].some((k) => keys.has(k))) throttle -= 1;
-      let steer = 0;
-      if ([...LEFT].some((k) => keys.has(k))) steer -= 1;
-      if ([...RIGHT].some((k) => keys.has(k))) steer += 1;
-      return { throttle, steer };
+    held(code) {
+      return held.has(CODE[code] ?? code);
     },
-    // Mouse drag since the last call, in pixels.
-    takeDrag() {
-      const d = { dx: dragDX, dy: dragDY };
-      dragDX = 0;
-      dragDY = 0;
-      return d;
+    // True once per physical press; callers must consume it the same frame.
+    pressed(code) {
+      return edges.has(CODE[code] ?? code);
     },
-    takeActions() {
-      const taken = actions;
-      actions = 0;
-      return taken;
+    // Mouse-look delta since the last call, in pixels; resets to zero.
+    look() {
+      const out = { dx: lookDx, dy: lookDy };
+      lookDx = 0;
+      lookDy = 0;
+      return out;
     },
-    get anyKey() {
-      return keys.size > 0;
+    // A click (down + up without dragging far) means "shoot" when armed.
+    clicked() {
+      const was = pointerDown;
+      pointerDown = false;
+      return was;
+    },
+    // Called at the end of every frame so edges do not leak into the next.
+    endFrame() {
+      edges.clear();
+    },
+    destroy() {
+      window.removeEventListener('keydown', onKeyDown);
+      window.removeEventListener('keyup', onKeyUp);
+      canvas.removeEventListener('pointerdown', onPointerDown);
+      window.removeEventListener('pointermove', onPointerMove);
+      window.removeEventListener('pointerup', onPointerUp);
     },
   };
 }

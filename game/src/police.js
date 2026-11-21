@@ -1,172 +1,237 @@
-// Wanted + police. Heat 0-100, stars = floor(heat/20). Crimes only raise
-// heat when witnessed (ped in 30m, police in 520m, or already wanted).
-// Pool of 8 units, deterministic call signs, intercept pursuit on Car.drive.
+// Wanted + police. Heat 0–100, stars = floor(heat/20). A crime only raises
+// heat when witnessed — a pedestrian or a police unit close enough, or the
+// player already wanted. Eight units with deterministic call signs pursue
+// by intercept; a helicopter watches from 40 m at 3+ stars; roadblocks
+// appear ahead at 3+ stars; the "Fresh Coat" bay wipes the slate for $150.
+
 import * as THREE from 'three';
-import { CONFIG } from './config.js';
-import { Car, repaintCar } from './vehicles.js';
-export const CRIMES = { steal: 25, hitPed: 20, shoot: 30, kill: 40, killCop: 50, explosion: 30 };
-const NAMES = ['IBIS', 'TARPON', 'HERON', 'PELICAN', 'EGRET', 'OSPREY'];
+import { WANTED, ECONOMY, CAR } from './config.js';
+import { createCar } from './vehicles.js';
+
+const CALLSIGNS = ['IBIS', 'TARPON', 'HERON', 'PELICAN', 'EGRET', 'OSPREY'];
 const UNITS_BY_STARS = [0, 2, 3, 4, 6, 8];
-const wrap = (a) => { while (a > Math.PI) a -= Math.PI * 2; while (a < -Math.PI) a += Math.PI * 2; return a; };
-const clamp = (v, a, b) => Math.max(a, Math.min(b, v));
-export class Police {
-  constructor(scene, city, api) {
-    this.scene = scene; this.city = city; this.api = api;
-    this.heat = 0; this.evadeTimer = 0; this.bustedTimer = 0; this.lastLevel = 0; this.wasWanted = false;
-    this.zone = { x: 0, z: 0, r: 260 };
-    this.units = [];
-    for (let i = 0; i < 8; i++) {
-      const car = new Car(scene, 0x16232e, 600, 600, 0);
-      car.maxSpeed = 37.4; car.steerAuthority = 0.8; car.mesh.visible = false;
-      const barGeo = new THREE.BoxGeometry(0.5, 0.16, 0.3);
-      const red = new THREE.MeshLambertMaterial({ color: 0xff2a2a, emissive: 0xff2a2a, emissiveIntensity: 1 });
-      const blue = new THREE.MeshLambertMaterial({ color: 0x2a6aff, emissive: 0x2a6aff, emissiveIntensity: 1 });
-      const r = new THREE.Mesh(barGeo, red); r.position.set(-0.32, 1.42, -0.2);
-      const b = new THREE.Mesh(barGeo, blue); b.position.set(0.32, 1.42, -0.2);
-      car.mesh.add(r); car.mesh.add(b);
-      const off = new THREE.Group();
-      const torso = new THREE.Mesh(new THREE.BoxGeometry(0.5, 0.6, 0.28), new THREE.MeshLambertMaterial({ color: 0x16232e }));
-      torso.position.y = 1.05; const head = new THREE.Mesh(new THREE.BoxGeometry(0.32, 0.32, 0.3), new THREE.MeshLambertMaterial({ color: 0xe8b48a }));
-      head.position.y = 1.55; off.add(torso); off.add(head); off.visible = false; scene.add(off);
-      this.units.push({ car, red, blue, officer: off, active: false, wrecked: false, callsign: `${NAMES[i % 6]}-${10 + i * 7}`, stuck: 0, reversing: 0 });
-    }
-    // Heli visual: 1 group, hover 40 m, spotlight = cone mesh (no real light).
-    const hg = new THREE.Group();
-    const hm = new THREE.MeshLambertMaterial({ color: 0x16232e });
-    const hbody = new THREE.Mesh(new THREE.BoxGeometry(3.4, 1.1, 1.6), hm);
-    hbody.position.y = 0.5; hg.add(hbody);
-    const htail = new THREE.Mesh(new THREE.BoxGeometry(0.5, 0.5, 2.6), hm);
-    htail.position.set(0, 0.6, -2.4); hg.add(htail);
-    const rotor = new THREE.Mesh(new THREE.BoxGeometry(7.5, 0.08, 0.4), new THREE.MeshLambertMaterial({ color: 0x20262e }));
-    rotor.position.y = 1.25; hg.add(rotor);
-    const cone = new THREE.Mesh(new THREE.ConeGeometry(5, 40, 20, 1, true),
-      new THREE.MeshBasicMaterial({ color: 0xfff6c8, transparent: true, opacity: 0.12, side: THREE.DoubleSide, depthWrite: false }));
-    cone.position.y = -20; hg.add(cone);
-    hg.visible = false; scene.add(hg);
-    this.heli = { group: hg, rotor, on: false };
-    // Roadblock: 2 parked police cars, placed across the road ahead.
-    this.blocks = [];
-    for (let i = 0; i < 2; i++) { const c = new Car(scene, 0x16232e, 600, 600, 0); c.mesh.visible = false; this.blocks.push(c); }
-    this.blockOn = false; this.blockAt = { x: 0, z: 0 };
-    // Respray bay "Fresh Coat" ($150): teal ring + pillar at (80, -36).
-    const ring = new THREE.Mesh(new THREE.RingGeometry(5, 6.6, 28),
-      new THREE.MeshBasicMaterial({ color: 0x4fc3f7, transparent: true, opacity: 0.75, side: THREE.DoubleSide }));
-    ring.rotation.x = -Math.PI / 2; ring.position.set(80, 0.15, -36); scene.add(ring);
-    const pil = new THREE.Mesh(new THREE.CylinderGeometry(5.4, 5.4, 12, 20, 1, true),
-      new THREE.MeshBasicMaterial({ color: 0x4fc3f7, transparent: true, opacity: 0.1, side: THREE.DoubleSide, depthWrite: false }));
-    pil.position.set(80, 6, -36); scene.add(pil);
-    this.respray = { x: 80, z: -36, r: 7 }; this.inBay = false; this.bayHint = false;
+const RESPRAY_BAY = { x: 30, z: 30, r: 6 };
+
+export function createPolice(scene, city, rng, hooks = {}) {
+  const units = [];
+  for (let i = 0; i < 8; i++) {
+    const car = createCar(scene, { x: 0, z: 0, color: 0x1d2126, police: true, maxSpeed: CAR.policeMaxSpeed });
+    car.mesh.visible = false;
+    car.callsign = `${CALLSIGNS[i % CALLSIGNS.length]}-${10 + i * 7}`;
+    car.mode = 'OFF';
+    car.stuck = 0;
+    units.push(car);
   }
-  get level() { return Math.floor(this.heat / 20); }
-  addHeat(n) { this.heat = clamp(this.heat + n, 0, 100); }
-  addCrime(type, pos, peds) {
-    const n = CRIMES[type] || 10;
-    let seen = this.level > 0;
-    if (!seen && peds) for (const p of peds) if (Math.hypot(p.pos.x - pos.x, p.pos.z - pos.z) < 30) { seen = true; break; }
-    if (!seen) for (const u of this.units) if (u.active && Math.hypot(u.car.pos.x - pos.x, u.car.pos.z - pos.z) < 520) { seen = true; break; }
-    if (seen) { this.addHeat(n); this.zone.x = pos.x; this.zone.z = pos.z; if (type === 'shoot' || type === 'kill') this.api.radio.sfx('wanted'); }
-    return seen;
+
+  // Helicopter: body + tail + rotor + a transparent spotlight cone. It is a
+  // visual, not a real spotlight — one shadowed light is the budget.
+  const heli = new THREE.Group();
+  const heliBody = new THREE.Mesh(new THREE.BoxGeometry(3, 1.4, 6), new THREE.MeshLambertMaterial({ color: 0x1d2126 }));
+  const heliTail = new THREE.Mesh(new THREE.BoxGeometry(0.7, 0.7, 4), new THREE.MeshLambertMaterial({ color: 0x1d2126 }));
+  heliTail.position.set(0, 0.3, -4.5);
+  const rotor = new THREE.Mesh(new THREE.BoxGeometry(9, 0.12, 0.7), new THREE.MeshLambertMaterial({ color: 0x30343a }));
+  rotor.position.y = 1;
+  // Narrow, faint beam: at 0.22 opacity and radius 7 it read as a solid grey
+  // lampshade at night instead of light.
+  const coneMat = new THREE.MeshBasicMaterial({ color: 0xfff2c8, transparent: true, opacity: 0.14, side: THREE.DoubleSide });
+  // ConeGeometry's apex is +Y by default: centered 20 m below the heli it
+  // already points apex-up at the heli, base-down at the street — no flip.
+  const cone = new THREE.Mesh(new THREE.ConeGeometry(5, 40, 12, 1, true), coneMat);
+  cone.position.y = -20;
+  heli.add(heliBody, heliTail, rotor, cone);
+  heli.visible = false;
+  scene.add(heli);
+
+  // Roadblock: two police cars parked across the road ahead, with a gap.
+  const blockers = [createCar(scene, { x: 0, z: 0, color: 0x1d2126, police: true }), createCar(scene, { x: 0, z: 0, color: 0x1d2126, police: true })];
+  for (const b of blockers) b.mesh.visible = false;
+
+  const state = {
+    heat: 0,
+    stars: 0,
+    zone: null,
+    evadeTimer: 0,
+    seenTimer: 0,
+    bustedTimer: 0,
+    strobe: 0,
+  };
+
+  function starsFor(heat) {
+    return Math.min(5, Math.floor(heat / WANTED.heatPerStar));
   }
-  spawn(u, ctx) {
-    const behind = ctx.yaw + Math.PI, rx = (Math.random() - 0.5) * 40;
-    const x = ctx.pos.x + Math.sin(behind) * 80 + Math.cos(behind) * rx;
-    const z = ctx.pos.z + Math.cos(behind) * 80 - Math.sin(behind) * rx;
-    u.car.pos.set(x, 0, z); this.city.clampToLand(u.car.pos); this.city.collideCircle(u.car.pos, 2.1);
-    u.car.yaw = Math.atan2(ctx.pos.x - x, ctx.pos.z - z); u.car.speed = 18;
-    u.car.mesh.visible = true; u.active = true; u.wrecked = false; u.stuck = 0; u.reversing = 0;
+
+  function setHeat(next) {
+    const before = state.stars;
+    state.heat = THREE.MathUtils.clamp(next, 0, WANTED.maxHeat);
+    state.stars = starsFor(state.heat);
+    if (state.stars > before && hooks.onStarsUp) hooks.onStarsUp(state.stars);
+    if (state.stars < before && hooks.onStarsDown) hooks.onStarsDown(state.stars);
+    if (state.stars === 0 && before > 0 && hooks.onEscape) hooks.onEscape(before);
   }
-  despawn(u) { u.active = false; u.car.mesh.visible = false; u.officer.visible = false; u.car.speed = 0; }
-  resetHeat() { this.heat = 0; this.wasWanted = false; this.evadeTimer = 0; this.bustedTimer = 0; for (const u of this.units) this.despawn(u); this.heli.on = false; this.heli.group.visible = false; this.hideBlock(); }
-  hideBlock() { this.blockOn = false; for (const b of this.blocks) b.mesh.visible = false; }
-  hitsBlock(pos) { if (!this.blockOn) return false; return this.blocks.some((b) => Math.hypot(b.pos.x - pos.x, b.pos.z - pos.z) < 3); }
-  update(dt, ctx) {
-    const level = this.level; this.api.state.wanted = level;
-    if (level > 0) this.wasWanted = true;
-    else if (this.wasWanted && this.heat <= 0) {
-      this.wasWanted = false; const s = this.api.state; s.escapes = (s.escapes || 0) + 1;
-      this.api.hud.showToast(`You lost the cops — escape ${Math.min(s.escapes, 5)}/5`, 3);
-    }
-    if (level !== this.lastLevel) { if (level > this.lastLevel) this.api.radio.sfx('wanted'); this.lastLevel = level; }
-    const want = UNITS_BY_STARS[level];
-    let active = this.units.filter((u) => u.active && !u.wrecked).length;
-    for (const u of this.units) {
-      if (!u.active) continue;
-      const d = Math.hypot(u.car.pos.x - ctx.pos.x, u.car.pos.z - ctx.pos.z);
-      if (d > 220) { this.despawn(u); active--; }
-    }
-    if (active < want) for (const u of this.units) { if (active >= want) break; if (!u.active) { this.spawn(u, ctx); active++; } }
-    let seen = false;
-    for (const u of this.units) {
-      if (!u.active || u.wrecked) continue;
-      const dx = ctx.pos.x - u.car.pos.x, dz = ctx.pos.z - u.car.pos.z, d = Math.hypot(dx, dz);
-      const flash = Math.sin(performance.now() / 120) > 0;
-      u.red.emissiveIntensity = flash ? 1.6 : 0.15; u.blue.emissiveIntensity = flash ? 0.15 : 1.6;
-      if (d < 80) { seen = true; this.zone.x = ctx.pos.x; this.zone.z = ctx.pos.z; }
-      if (!ctx.driving && d < 150) {
-        u.car.speed = Math.max(0, u.car.speed - 20 * dt);
-        const o = u.officer; o.visible = true;
-        if (!u.officerOut) { o.position.set(u.car.pos.x, 0, u.car.pos.z); u.officerOut = true; }
-        const odx = ctx.pos.x - o.position.x, odz = ctx.pos.z - o.position.z, od = Math.hypot(odx, odz);
-        if (od > 0.5) { o.position.x += (odx / od) * 5 * dt; o.position.z += (odz / od) * 5 * dt; o.rotation.y = Math.atan2(odx, odz); }
-        if (od < 2.5 && (ctx.playerSpeed || 0) < 1 && level <= 2) { this.bustedTimer += dt; if (this.bustedTimer > 1.6) { this.bustedTimer = 0; this.api.onBusted(); } }
-        else this.bustedTimer = 0;
-        continue;
+
+  return {
+    get starsNow() {
+      return state.stars;
+    },
+    get heatNow() {
+      return state.heat;
+    },
+    get zone() {
+      return state.zone;
+    },
+    units,
+    heli,
+    resprayBay: RESPRAY_BAY,
+    addHeat(amount) {
+      setHeat(state.heat + amount);
+    },
+    resetHeat() {
+      setHeat(0);
+      state.zone = null;
+      state.evadeTimer = 0;
+    },
+    // A crime at (x, z) counts only when someone sees it — or when the
+    // player is already wanted, in which case everything counts.
+    witnessed(x, z, peds) {
+      if (state.stars > 0) return true;
+      for (const unit of units) {
+        if (unit.mode === 'OFF' || unit.mode === 'WRECK') continue;
+        if (Math.hypot(unit.x - x, unit.z - z) < WANTED.witnessPolice) return true;
       }
-      u.officer.visible = false; u.officerOut = false;
-      if (u.reversing > 0) { u.reversing -= dt; u.car.drive(-0.7, -u.lastSteer || 0, dt, this.city); continue; }
-      const ix = ctx.pos.x + (ctx.vel ? ctx.vel.x * 0.6 : 0), iz = ctx.pos.z + (ctx.vel ? ctx.vel.z * 0.6 : 0);
-      const wantYaw = Math.atan2(ix - u.car.pos.x, iz - u.car.pos.z);
-      const steer = clamp(wrap(wantYaw - u.car.yaw) * 2, -1, 1); u.lastSteer = steer;
-      u.car.drive(1, steer, dt, this.city);
-      if (Math.abs(u.car.speed) < 2.5) { u.stuck += dt; if (u.stuck > 1.1) { u.stuck = 0; u.reversing = 0.9; } } else u.stuck = 0;
-    }
-    if (level > 0 && !seen) {
-      this.evadeTimer += dt;
-      if (this.evadeTimer > 5 + level * 1.8) this.heat = Math.max(0, this.heat - 2.5 * dt);
-    } else this.evadeTimer = 0;
-    // Heli (from 3 stars, §5b.4) + roadblock (from 3 stars, 80 m ahead).
-    const t = this.api.state.elapsed || 0;
-    if (level >= 3) {
-      if (!this.heli.on) { this.heli.on = true; this.heli.group.visible = true; this.api.hud.showToast('POLICE HELICOPTER — spotlight on you', 3); }
-      const a = t * 0.25;
-      const hfx = Math.sin(ctx.yaw), hfz = Math.cos(ctx.yaw);
-      this.heli.group.position.set(ctx.pos.x + hfx * 26 + Math.sin(a) * 4, 40, ctx.pos.z + hfz * 26 + Math.cos(a) * 4);
-      this.heli.rotor.rotation.y += dt * 18;
-      if (!this.blockOn) {
-        const fx = Math.sin(ctx.yaw), fz = Math.cos(ctx.yaw), px = Math.cos(ctx.yaw), pz = -Math.sin(ctx.yaw);
-        const cx = ctx.pos.x + fx * 80, cz = ctx.pos.z + fz * 80;
-        this.blockAt = { x: cx, z: cz };
-        this.blocks[0].pos.set(cx + px * 3.4, 0, cz + pz * 3.4);
-        this.blocks[1].pos.set(cx - px * 3.4, 0, cz - pz * 3.4);
-        this.city.clampToLand(this.blocks[0].pos); this.city.clampToLand(this.blocks[1].pos);
-        for (const b of this.blocks) { b.yaw = ctx.yaw + Math.PI / 2; b.mesh.rotation.y = b.yaw; b.mesh.visible = true; }
-        this.blockOn = true; this.api.hud.showToast('ROADBLOCK AHEAD — find the gap', 3);
+      if (peds && peds.nearest(x, z, WANTED.witnessPed)) return true;
+      return false;
+    },
+    commitCrime(kind, x, z, peds) {
+      if (!this.witnessed(x, z, peds)) return false;
+      this.addHeat(WANTED.crimeHeat[kind] ?? 10);
+      state.zone = { x, z, r: 260 + state.stars * 90 };
+      state.evadeTimer = 0;
+      return true;
+    },
+    // On-demand dispatch lines for the HUD: call sign, distance, status.
+    describe(player) {
+      const lines = [];
+      let shown = 0;
+      for (const unit of units) {
+        if (unit.mode === 'OFF' || unit.mode === 'WRECK' || shown >= 5) continue;
+        const d = Math.round(Math.hypot(unit.x - player.x, unit.z - player.z));
+        lines.push(`${unit.callsign} · ${d}m · ${unit.mode}`);
+        shown++;
       }
-    } else {
-      if (this.heli.on) { this.heli.on = false; this.heli.group.visible = false; }
-      if (this.blockOn) this.hideBlock();
-    }
-    if (this.blockOn && Math.hypot(ctx.pos.x - this.blockAt.x, ctx.pos.z - this.blockAt.z) < 14) this.hideBlock();
-    // Respray: drive into the bay with wanted > 0 and $150 -> wanted 0.
-    const bd = Math.hypot(ctx.pos.x - this.respray.x, ctx.pos.z - this.respray.z);
-    if (ctx.driving && level > 0 && bd < this.respray.r && !this.inBay) {
-      this.inBay = true;
-      if (this.api.state.cash >= 150) {
-        this.api.state.cash -= 150; this.resetHeat();
-        if (ctx.car) repaintCar(ctx.car, 0xf2c94c);
-        this.api.hud.showToast('FRESH COAT — $150 · wanted cleared', 3); this.api.radio.sfx('unlock');
-      } else if (!this.bayHint) { this.bayHint = true; this.api.hud.showToast('Fresh Coat needs $150', 2.5); }
-    } else if (bd > 10) { this.inBay = false; this.bayHint = false; }
-    this.zone.r = 260 + level * 90;
-  }
-  describe() {
-    const list = this.units.filter((u) => u.active && !u.wrecked)
-      .map((u) => ({ name: u.callsign, d: Math.round(Math.hypot(u.car.pos.x - this.zone.x, u.car.pos.z - this.zone.z)), status: 0 }))
-      .sort((a, b) => a.d - b.d).slice(0, 3);
-    for (const u of list) u.status = u.d < 6 ? 'RAMMING' : u.d < 25 ? 'BOXING IN' : 'PURSUIT';
-    if (this.heli.on) list.unshift({ name: 'HELI-1', d: Math.round(Math.hypot(this.heli.group.position.x - this.zone.x, this.heli.group.position.z - this.zone.z)), status: 'SPOTLIGHT' });
-    if (this.blockOn) list.push({ name: 'ROADBLOCK', d: Math.round(Math.hypot(this.blockAt.x - this.zone.x, this.blockAt.z - this.zone.z)), status: 'ROADBLOCK' });
-    return list.slice(0, 5);
-  }
-  activeUnits() { return this.units.filter((u) => u.active); }
+      if (state.stars >= 3) lines.push(`HELI-1 · SPOTLIGHT`);
+      return lines.join('\n');
+    },
+    update(dt, ctx) {
+      const { x, z, inCar, speed } = ctx;
+      const want = UNITS_BY_STARS[state.stars];
+      let active = 0;
+      for (const unit of units) {
+        // Wrecks stay where they fell, as scenery — never reactivated.
+        if (unit.mode === 'WRECK') continue;
+        if (active < want) {
+          if (unit.mode === 'OFF') {
+            // Spawn 60–100 m behind the player, on the nearest street, never
+            // in front of the camera.
+            const behind = Math.atan2(-Math.sin(ctx.heading ?? 0), -Math.cos(ctx.heading ?? 0));
+            const dist = rng.range(60, 100);
+            const px = x + Math.sin(behind) * dist;
+            const pz = z + Math.cos(behind) * dist;
+            unit.setPose(px, pz, behind);
+            unit.mesh.visible = true;
+            unit.mode = 'PURSUIT';
+          }
+          active++;
+        } else if (unit.mode !== 'OFF') {
+          unit.mode = 'OFF';
+          unit.mesh.visible = false;
+        }
+        if (unit.mode === 'OFF') continue;
+        // Intercept: aim where the player will be in 0.6 s.
+        const lead = 0.6;
+        const tx = x + Math.sin(ctx.heading ?? 0) * (speed ?? 0) * lead;
+        const tz = z + Math.cos(ctx.heading ?? 0) * (speed ?? 0) * lead;
+        const dx = tx - unit.x;
+        const dz = tz - unit.z;
+        const dist = Math.hypot(dx, dz) || 1;
+        const wantHeading = Math.atan2(dx, dz);
+        let diff = wantHeading - unit.heading;
+        while (diff > Math.PI) diff -= Math.PI * 2;
+        while (diff < -Math.PI) diff += Math.PI * 2;
+        const steer = THREE.MathUtils.clamp(diff * 2, -1, 1) * CAR.policeSteer;
+        unit.drive(dt, 1, steer, city.collide);
+        unit.mode = dist < 6 ? 'RAMMING' : dist < 25 ? 'BOXING IN' : 'PURSUIT';
+        // Unstick: full throttle but barely moving for over a second means
+        // the unit is wedged — back up with reversed steering.
+        if (Math.abs(unit.speed) < 2.5) unit.stuck += dt;
+        else unit.stuck = 0;
+        if (unit.stuck > 1.1) {
+          unit.drive(dt, -1, -steer, city.collide);
+          if (unit.stuck > 2) unit.stuck = 0;
+        }
+      }
+
+      // Helicopter at 3+ stars: hover 40 m up, 26 m ahead of the player.
+      const heliOn = state.stars >= 3;
+      heli.visible = heliOn;
+      if (heliOn) {
+        const ahead = ctx.heading ?? 0;
+        heli.position.set(x + Math.sin(ahead) * 26, 40, z + Math.cos(ahead) * 26);
+        rotor.rotation.y += dt * 18;
+      }
+
+      // Roadblock at 3+ stars: two units across the road 80 m ahead, a gap
+      // in the middle the player can thread — or smash through.
+      const blockOn = state.stars >= 3;
+      blockers.forEach((b, i) => {
+        b.mesh.visible = blockOn;
+        if (!blockOn) return;
+        const ahead = ctx.heading ?? 0;
+        const bx = x + Math.sin(ahead) * 80;
+        const bz = z + Math.cos(ahead) * 80;
+        const px = Math.cos(ahead);
+        const pz = -Math.sin(ahead);
+        const off = (i === 0 ? -4.5 : 4.5);
+        b.setPose(bx + px * off, bz + pz * off, ahead + Math.PI / 2);
+      });
+
+      // Strobo: alternate the light bar red / blue twice a second.
+      state.strobe += dt;
+      const phase = Math.floor(state.strobe * 4) % 2 === 0;
+      for (const unit of units) {
+        if (!unit.lightbar || unit.mode === 'OFF') continue;
+        unit.lightbar.red.material.emissiveIntensity = phase ? 2.2 : 0.1;
+        unit.lightbar.blue.material.emissiveIntensity = phase ? 0.1 : 2.2;
+      }
+
+      // Seen? A unit within 60 m with the player in the open counts.
+      const nearest = units.reduce((m, u) => (u.mode !== 'OFF' ? Math.min(m, Math.hypot(u.x - x, u.z - z)) : m), Infinity);
+      const seen = nearest < 60;
+      if (seen) {
+        state.seenTimer += dt;
+        state.evadeTimer = 0;
+        if (state.zone) { state.zone.x = x; state.zone.z = z; }
+      } else if (state.stars > 0) {
+        state.evadeTimer += dt;
+        const need = WANTED.evadeBaseSeconds + state.stars * WANTED.evadePerStar;
+        if (state.evadeTimer > need) {
+          setHeat(state.heat - WANTED.decayPerSecond * dt * 4);
+          if (state.heat <= 0) this.resetHeat();
+        }
+      } else if (state.heat > 0) {
+        setHeat(state.heat - WANTED.decayPerSecond * dt);
+      }
+
+      // Busted: on foot, 2 stars or fewer, slow, a unit within 3 m.
+      if (!inCar && state.stars > 0 && state.stars <= 2 && Math.abs(speed ?? 0) < 1) {
+        const close = nearest < 3;
+        state.bustedTimer = close ? state.bustedTimer + dt : 0;
+        if (state.bustedTimer > 1.6 && hooks.onBusted) {
+          state.bustedTimer = 0;
+          hooks.onBusted();
+        }
+      } else {
+        state.bustedTimer = 0;
+      }
+    },
+  };
 }

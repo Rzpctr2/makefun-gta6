@@ -1,15 +1,12 @@
-// Palma Verde — the entrypoint for make.fun's gta6-01 (Node 22, standard
-// library only). Phase 2 adds radio, dialog and missions 1-3 in game/src.
-// The game is this repository's game/ folder: plain static
-// files that a desktop browser loads offline (game/index.html and its ES
-// modules, three.js vendored as game/vendor/three.module.min.js, no network
-// request while playing). This program hands the entry in: it copies game/
-// and screenshots/ from beside this file into /output and writes
-// /output/dossier.json, the summary the judge reads, using the vendored
-// make.fun library.
+// Palma Verde — the make.fun gta6-01 entrypoint (Node 22, stdlib only).
+// The game is plain static files: game/index.html plus ES modules, with
+// Three.js vendored under game/vendor — no network while playing, no build
+// step. This program packs the entry for the judge: it copies game/,
+// screenshots/ and the README into the output directory and writes
+// /output/dossier.json with the vendored make.fun library.
 //
-// Play it locally first with `node serve.ts`, then open http://localhost:8080.
-// Outside the grader's container, MAKEFUN_OUTPUT_DIR stands in for /output:
+// Play locally first: `node serve.ts`, then http://localhost:8080.
+// Outside the grader, MAKEFUN_OUTPUT_DIR stands in for /output:
 //   mkdir -p out && MAKEFUN_OUTPUT_DIR=out node main.ts
 
 import { cpSync, existsSync, mkdirSync, writeFileSync } from 'node:fs';
@@ -20,22 +17,24 @@ import { buildDossier } from './vendor/makefun-game.ts';
 const here = fileURLToPath(new URL('.', import.meta.url));
 const out = process.env.MAKEFUN_OUTPUT_DIR ?? '/output';
 
-mkdirSync(out, { recursive: true });
-cpSync(join(here, 'game'), join(out, 'game'), { recursive: true });
-mkdirSync(join(out, 'screenshots'), { recursive: true });
-if (existsSync(join(here, 'screenshots'))) {
-  cpSync(join(here, 'screenshots'), join(out, 'screenshots'), { recursive: true });
-}
-// Phase 2 (langkah 12): ship the README beside the dossier so the entry
-// is self-describing even outside the repo.
-if (existsSync(join(here, 'README.md'))) {
-  cpSync(join(here, 'README.md'), join(out, 'README.md'));
+function copyIfPresent(name) {
+  const from = join(here, name);
+  if (!existsSync(from)) return;
+  cpSync(from, join(out, name), { recursive: true });
 }
 
-// The scorer's own caps: only text_max_bytes shapes the bytes; the other
-// limits refuse an entry the scorer would refuse (more than 4 screenshots
-// or one over 256 KiB; more than 993 files in game/ or 48 MiB of game files
-// in all; a path under game/ over 1000 bytes). game/ counts beside /output's
+mkdirSync(out, { recursive: true });
+copyIfPresent('game');
+mkdirSync(join(out, 'screenshots'), { recursive: true });
+copyIfPresent('screenshots');
+// Ship the README beside the dossier so the entry describes itself even
+// outside the repo (round-2 rebuild: fresh implementation, same game).
+copyIfPresent('README.md');
+
+// The scorer's own caps: only text_max_bytes shapes the bytes; the rest
+// refuse an entry the scorer would refuse — more than 4 screenshots or one
+// over 256 KiB; more than 993 files in game/ or 48 MiB of game files in
+// all; a path under game/ over 1000 bytes. game/ counts beside /output's
 // own 1000-entry cap, together with screenshots/ and dossier.json.
 writeFileSync(
   join(out, 'dossier.json'),

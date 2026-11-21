@@ -1,209 +1,419 @@
-// Missions: data-driven. 8 story missions, one small runner, 5 stage types:
-// talk / reach / hold / combat / escape. Talk stages are hidden from the HUD
-// stage count. Fail is never game over: toast, restart from stage 0.
+// Missions: data-driven. Eight story missions and one repeatable street
+// race share one small runner and five stage types — talk / reach / hold /
+// combat / escape. Talk and scripted wanted stages stay out of the HUD
+// stage count. Failing is never game over: a toast, then retry from stage
+// zero. A par time pays a $250 bonus on top of the reward.
+
 import * as THREE from 'three';
-import { Car } from './vehicles.js';
-const wrapA = (a) => { while (a > Math.PI) a -= Math.PI * 2; while (a < -Math.PI) a += Math.PI * 2; return a; };
-export const RACE = { name: 'Palma Verde Grand Loop', reward: 1000, par: 75, cps: [
-  { x: 22, z: -152 }, { x: 138, z: -152 }, { x: 138, z: 138 }, { x: -94, z: 138 },
-  { x: -94, z: -36 }, { x: 22, z: -36 }, { x: 22, z: 22 } ] };
+import { createCar } from './vehicles.js';
+
 export const MISSIONS = [
-  { name: 'Selamat Datang di Palma Verde', giver: 'Nadia', reward: 300, par: 150, stages: [
-    { t: 'talk', lines: [{ who: 'Nadia', text: 'Leo. Baru sampai, sudah lapar? Palma Verde tidak memberi makan gratis.' }, { who: 'Nadia', text: 'Jalan dulu ke plaza. Mobil merah itu punyamu — bawa ke persimpangan utara, cepat.' }] },
-    { t: 'reach', x: 0, z: 10, r: 6, label: 'Walk to the plaza' },
-    { t: 'reach', x: -36, z: -94, r: 8, drive: true, label: 'Drive to the north junction' } ] },
-  { name: 'Paket Panas', giver: 'Nadia', reward: 500, par: 90, stages: [
-    { t: 'reach', x: -94, z: 138, r: 8, drive: true, timer: 75, label: 'Deliver the package — fast' },
-    { t: 'reach', x: 80, z: 22, r: 8, drive: true, label: 'Drop it at the boulevard' } ] },
-  { name: 'Tukar Guling', giver: 'Kiko', reward: 700, par: 240, stages: [
-    { t: 'talk', lines: [{ who: 'Kiko', text: 'Coupe sport itu terparkir di avenue. Ambil, jangan dilihat orang.' }] },
-    { t: 'reach', x: -36, z: 80, r: 6, label: 'Steal the sport coupe', heat: 1 },
-    { t: 'escape', x: 0, z: 8, r: 8, label: 'Lose the heat at the safehouse' } ] },
-  { name: 'Sarang di Menara', giver: 'Nadia', reward: 1200, par: 240, stages: [
-    { t: 'reach', x: 138, z: 138, r: 8, label: 'Reach the tower' },
-    { t: 'combat', n: 4, label: 'Clear the rooftop crew' },
-    { t: 'escape', x: 0, z: 8, r: 8, label: 'Escape to the safehouse' } ] },
-  { name: 'Kasir Kosong', giver: 'Ilsa', reward: 1500, par: 150, stages: [
-    { t: 'reach', x: 80, z: -152, r: 8, label: 'Reach the shop' },
-    { t: 'hold', x: 80, z: -152, r: 8, t: 12, label: 'Hold the till until the safe opens' },
-    { t: 'escape', x: 0, z: 8, r: 8, label: 'Escape to the safehouse' } ] },
-  { name: 'Sopir Pelarian', giver: 'Ilsa', reward: 2000, par: 240, stages: [
-    { t: 'talk', lines: [{ who: 'Ilsa', text: 'Aku yang menembak, kau yang menyetir. Jangan berhenti.' }] },
-    { t: 'escape', x: -152, z: -36, r: 10, drive: true, label: 'Outrun them to the west road' },
-    { t: 'reach', x: 0, z: 8, r: 8, label: 'Return to the safehouse' } ] },
-  { name: 'Jembatan Terbakar', giver: 'Nadia', reward: 2500, par: 240, stages: [
-    { t: 'combat', n: 3, label: 'Smash the 3 convoy cars' },
-    { t: 'escape', x: 0, z: 8, r: 8, label: 'Escape before the helicopter arrives' } ] },
-  { name: 'Bank Solmarina', giver: 'Nadia', reward: 5000, par: 240, stages: [
-    { t: 'talk', lines: [{ who: 'Nadia', text: 'Ini dia, Leo. Bank Solmarina. Setelah ini, Palma Verde milik kita.' }] },
-    { t: 'hold', x: 196, z: 80, r: 10, t: 15, label: 'Hold the vault' },
-    { t: 'combat', n: 5, label: 'Fight your way out' },
-    { t: 'escape', x: 0, z: 8, r: 8, label: 'Escape — become a legend' } ] },
+  {
+    id: 1, title: 'Selamat Datang di Palma Verde', reward: 300, rep: 1, par: 120,
+    stages: [
+      { type: 'talk', who: 'nadia', lines: [
+        { who: 'nadia', text: 'Leo Marin. Baru turun dari feri, sudah sok jagoan? Kota ini bukan tempat buat pendatang yang lambat.' },
+        { who: 'leo', text: 'Aku cepat belajar. Kasih aku kerjaan, Nadia.' },
+        { who: 'nadia', text: 'Gampang. Jalan ke pojok boulevard — mobil di sana, kuncinya di dalam. Bawa balik ke sini.' },
+      ] },
+      { type: 'reach', x: 36, z: -36, r: 5, label: 'Reach the corner car' },
+      { type: 'reach', x: 18, z: 18, r: 5, label: 'Bring it back to the plaza' },
+    ],
+  },
+  {
+    id: 2, title: 'Paket Panas', reward: 500, rep: 1, par: 75,
+    stages: [
+      { type: 'talk', who: 'nadia', lines: [
+        { who: 'nadia', text: 'Paket di ujung utara. Polisi lagi patroli — jangan sampai mereka lihat mukamu. Cepat.' },
+      ] },
+      { type: 'reach', x: 144, z: -144, r: 5, label: 'Pick up the package', timer: 75 },
+      { type: 'reach', x: 36, z: 36, r: 5, label: 'Deliver it to the boulevard' },
+    ],
+  },
+  {
+    id: 3, title: 'Tukar Guling', reward: 700, rep: 1, par: 150,
+    stages: [
+      { type: 'talk', who: 'kiko', lines: [
+        { who: 'kiko', text: 'Sport di parkiran La Rosa itu kencang, Leo. Ambil diam-diam. Jangan ada saksi.' },
+      ] },
+      { type: 'reach', x: 108, z: 72, r: 5, label: 'Steal the sports car' },
+      { type: 'reach', x: 36, z: 36, r: 5, label: 'Lose the heat, then bring it in' },
+      { type: 'escape', label: 'Lose the cops' },
+    ],
+  },
+  {
+    id: 4, title: 'Sarang di Menara', reward: 1200, rep: 2, par: 180, unlock: 'pistol',
+    stages: [
+      { type: 'talk', who: 'ilsa', lines: [
+        { who: 'ilsa', text: 'Tiga orang jaga menara jam. Mereka bersenjata. Kau juga — mulai sekarang.' },
+      ] },
+      { type: 'reach', x: 108, z: 18, r: 8, label: 'Reach the clock tower' },
+      { type: 'combat', count: 3, label: 'Clear the tower crew', foes: 3 },
+      { type: 'escape', label: 'Lose the cops' },
+    ],
+  },
+  {
+    id: 5, title: 'Kasir Kosong', reward: 1500, rep: 2, par: 150, unlock: 'smg',
+    stages: [
+      { type: 'talk', who: 'nadia', lines: [
+        { who: 'nadia', text: 'Brankas pasar butuh 20 detik. Tahan di dalam sampai bunyi klik. Alarm akan bunyi — itu sudah diperhitungkan.' },
+      ] },
+      { type: 'reach', x: 0, z: 126, r: 8, label: 'Reach the market safe' },
+      { type: 'hold', seconds: 20, x: 0, z: 126, r: 8, label: 'Hold the safe room' },
+      { type: 'escape', label: 'Lose the cops' },
+    ],
+  },
+  {
+    id: 6, title: 'Sopir Pelarian', reward: 2000, rep: 2, par: 150,
+    stages: [
+      { type: 'talk', who: 'ilsa', lines: [
+        { who: 'ilsa', text: 'Aku yang nembak dari jendela, kau yang nyetir. Empat bintang, Leo. Jangan berhenti.' },
+      ] },
+      { type: 'wanted', min: 4, label: 'The chase is on' },
+      { type: 'escape', label: 'Outrun them all' },
+      { type: 'reach', x: 18, z: 18, r: 5, label: 'Get back to the plaza' },
+    ],
+  },
+  {
+    id: 7, title: 'Jembatan Terbakar', reward: 2500, rep: 3, par: 210,
+    stages: [
+      { type: 'talk', who: 'kiko', lines: [
+        { who: 'kiko', text: 'Konvoi lewat ujung barat. Tiga mobil. Hancurkan semuanya, lalu hilang sebelum heli datang.' },
+      ] },
+      { type: 'reach', x: -108, z: -108, r: 8, label: 'Ambush the convoy' },
+      { type: 'combatCars', count: 3, label: 'Destroy 3 convoy cars' },
+      { type: 'escape', label: 'Lose the cops' },
+    ],
+  },
+  {
+    id: 8, title: 'Bank Solmarina', reward: 5000, rep: 3, par: 240,
+    stages: [
+      { type: 'talk', who: 'nadia', lines: [
+        { who: 'nadia', text: 'Ini dia, Leo. Bank Solmarina. Semua yang kita bangun menuju ke sini. Lima bintang menunggu di luar.' },
+      ] },
+      { type: 'reach', x: -72, z: -72, r: 8, label: 'Reach Bank Solmarina' },
+      { type: 'hold', seconds: 25, x: -72, z: -72, r: 8, label: 'Crack the vault' },
+      { type: 'combat', count: 4, label: 'Hold off the guards', foes: 4 },
+      { type: 'escape', label: 'Disappear' },
+    ],
+  },
 ];
-const BEACON_GEO = new THREE.CylinderGeometry(1.1, 1.1, 34, 10, 1, true);
-const BEACON_MAT = new THREE.MeshBasicMaterial({ color: 0xf2c94c, transparent: true, opacity: 0.32, side: THREE.DoubleSide, depthWrite: false });
-const RING_GEO = new THREE.RingGeometry(3.4, 4.4, 24);
-const RING_MAT = new THREE.MeshBasicMaterial({ color: 0xf2c94c, transparent: true, opacity: 0.8, side: THREE.DoubleSide });
-export class Missions {
-  constructor(scene, api) {
-    this.scene = scene; this.api = api; this.idx = 0; this.stage = 0; this.active = false; this.done = false;
-    this.stageTimer = 0; this.totalTimer = 0; this.holdTimer = 0; this.escTimer = 0;
-    this.talkStarted = false; this.nextTimer = 0; this.failTimer = 0; this.lastHud = '';
-    this.raceActive = false; this.raceCp = 0; this.raceTimer = 0; this.saved = null;
-    this.rivals = [new Car(scene, 0x4fc3f7, 600, 600, 0), new Car(scene, 0xff8a65, 600, 600, 0)];
-    this.rivals[0].maxSpeed = 30; this.rivals[1].maxSpeed = 28;
-    for (const r of this.rivals) { r.mesh.visible = false; r.cp = 0; }
-    this.beacon = new THREE.Group();
-    const pillar = new THREE.Mesh(BEACON_GEO, BEACON_MAT); pillar.position.y = 17;
-    const ring = new THREE.Mesh(RING_GEO, RING_MAT); ring.rotation.x = -Math.PI / 2; ring.position.y = 0.15;
-    this.beacon.add(pillar); this.beacon.add(ring); this.beacon.visible = false; scene.add(this.beacon);
+
+export const RACE = {
+  name: 'Palma Verde Grand Loop',
+  checkpoints: [[36, -144], [144, -144], [144, 144], [-108, 144], [-108, -36], [36, -36], [36, 36]],
+  prize: 1000,
+  par: 75,
+};
+
+function visibleStages(mission) {
+  return mission.stages.filter((s) => s.type !== 'talk' && s.type !== 'wanted');
+}
+
+export function createMissions(deps) {
+  const { dialog, notify, reward, scene, city, rng } = deps;
+  let index = -1;
+  let stage = 0;
+  let stageT = 0;
+  let missionT = 0;
+  let snapshot = 0;
+  let foes = [];
+  let convoy = [];
+  let failTimer = 0;
+  let nextTimer = 0;
+  let race = null;
+  let raceRivals = [];
+
+  function clearFoes() {
+    for (const foe of foes) scene.remove(foe.mesh);
+    foes = [];
+    for (const car of convoy) car.remove();
+    convoy = [];
   }
-  get mission() { return MISSIONS[this.idx]; }
-  get stageDef() { return this.mission ? this.mission.stages[this.stage] : null; }
-  facedStages() { return this.mission.stages.filter((s) => s.t !== 'talk'); }
-  stageNo() { const f = this.facedStages(); return Math.max(1, f.indexOf(this.stageDef) + 1); }
-  start(i) {
-    this.idx = Math.max(0, Math.min(MISSIONS.length - 1, i || 0));
-    this.stage = 0; this.active = true; this.done = false;
-    this.stageTimer = 0; this.totalTimer = 0; this.holdTimer = 0; this.escTimer = 0; this.talkStarted = false;
-    this.api.hud.showToast(`Mission ${this.idx + 1}/8 — ${this.mission.name}`, 3.5);
-    this.api.radio.sfx('blip');
-  }
-  // --- street race (side job, repeatable, §10) ---------------------------
-  raceTarget() { return this.raceActive ? RACE.cps[this.raceCp] : null; }
-  startRace(pos) {
-    if (this.raceActive) return true;
-    if (!this.api.state.driving) return false;
-    this.saved = { idx: this.idx, stage: this.stage, active: this.active };
-    this.active = false; this.raceActive = true; this.raceCp = 0; this.raceTimer = 0;
-    BEACON_MAT.color.setHex(0x4fc3f7); RING_MAT.color.setHex(0x4fc3f7);
-    const first = RACE.cps[0], yaw = Math.atan2(first.x - pos.x, first.z - pos.z);
-    this.rivals.forEach((r, i) => {
-      r.cp = 0; r.pos.set(pos.x + (i ? 4.5 : -4.5), 0, pos.z + 3); r.yaw = yaw;
-      r.speed = 0; r.mesh.visible = true; r.mesh.rotation.y = yaw;
-    });
-    this.api.hud.showToast(`RACE — ${RACE.name} · first to the finish wins $${RACE.reward.toLocaleString('en-US')}`, 4);
-    this.api.radio.sfx('blip');
-    return true;
-  }
-  endRace(won) {
-    this.raceActive = false; this.beacon.visible = false;
-    BEACON_MAT.color.setHex(0xf2c94c); RING_MAT.color.setHex(0xf2c94c);
-    for (const r of this.rivals) { r.mesh.visible = false; r.speed = 0; }
-    const s = this.api.state;
-    if (won) {
-      const bonus = this.raceTimer <= RACE.par ? 250 : 0;
-      s.cash += RACE.reward + bonus; s.raceWins = (s.raceWins || 0) + 1; s.raceWon = true;
-      if (!s.raceBest || this.raceTimer < s.raceBest) s.raceBest = Math.round(this.raceTimer);
-      this.api.hud.showToast(`RACE WON — +$${(RACE.reward + bonus).toLocaleString('en-US')} in ${Math.round(this.raceTimer)}s${bonus ? ' (par bonus!)' : ''}`, 4);
-      this.api.radio.sfx('sting');
-    } else {
-      this.api.hud.showToast('RACE LOST — a rival finished first · pause to retry', 4);
-      this.api.radio.sfx('busted');
-    }
-    if (this.saved) { this.idx = this.saved.idx; this.stage = this.saved.stage; this.active = this.saved.active; this.saved = null; }
-  }
-  updateRace(dt, ctx) {
-    this.raceTimer += dt;
-    const cp = RACE.cps[this.raceCp];
-    if (Math.hypot(ctx.pos.x - cp.x, ctx.pos.z - cp.z) < 10) {
-      this.raceCp++; this.api.radio.sfx('blip');
-      if (this.raceCp >= RACE.cps.length) { this.endRace(true); return; }
-    }
-    for (const r of this.rivals) {
-      const t = RACE.cps[r.cp];
-      if (Math.hypot(r.pos.x - t.x, r.pos.z - t.z) < 10) {
-        r.cp++;
-        if (r.cp >= RACE.cps.length) { this.endRace(false); return; }
-      }
-      const want = Math.atan2(t.x - r.pos.x, t.z - r.pos.z);
-      const steer = Math.max(-1, Math.min(1, wrapA(want - r.yaw) * 2));
-      r.drive(0.92, steer, dt, this.api.city);
-    }
-    const o = this.raceTarget();
-    if (o) {
-      this.beacon.visible = true; this.beacon.position.set(o.x, 0, o.z);
-      const p = 1 + Math.sin(this.raceTimer * 3) * 0.12; this.beacon.scale.set(p, 1, p);
+
+  function spawnFoes(n, x, z) {
+    clearFoes();
+    for (let i = 0; i < n; i++) {
+      const g = new THREE.Group();
+      const body = new THREE.Mesh(new THREE.BoxGeometry(0.62, 0.9, 0.36), new THREE.MeshLambertMaterial({ color: 0x8a2a2a }));
+      body.position.y = 1.08;
+      const head = new THREE.Mesh(new THREE.SphereGeometry(0.24, 8, 6), new THREE.MeshLambertMaterial({ color: 0xe8b88a }));
+      head.position.y = 1.78;
+      g.add(body, head);
+      const fx = x + rng.range(-8, 8);
+      const fz = z + rng.range(-8, 8);
+      g.position.set(fx, 0, fz);
+      scene.add(g);
+      foes.push({ mesh: g, x: fx, z: fz, hp: 100, alive: true, kind: 'foe', radius: 0.6 });
     }
   }
-  objective() { const r = this.raceTarget(); if (r) return r; const s = this.stageDef; return s && s.x !== undefined ? { x: s.x, z: s.z } : null; }
-  distTo(pos) { const o = this.objective(); return o ? Math.hypot(pos.x - o.x, pos.z - o.z) : 0; }
-  completeStage() {
-    const s = this.stageDef;
-    if (s && s.heat) { if (this.api.police) this.api.police.addHeat(s.heat * 20); else this.api.state.wanted = Math.max(this.api.state.wanted, s.heat); this.api.radio.sfx('wanted'); }
-    this.stage++; this.stageTimer = 0; this.holdTimer = 0; this.escTimer = 0; this.talkStarted = false;
-    if (this.stage >= this.mission.stages.length) this.completeMission();
-    else this.api.radio.sfx('blip');
+
+  function spawnConvoy(x, z) {
+    clearFoes();
+    for (let i = 0; i < 3; i++) {
+      const car = createCar(scene, { x: x + (i - 1) * 8, z: z + rng.range(-4, 4), color: 0x30343a });
+      car.hp = 60;
+      car.alive = true;
+      car.kind = 'car';
+      convoy.push(car);
+    }
   }
-  completeMission() {
-    const m = this.mission, bonus = this.totalTimer <= m.par ? 250 : 0;
-    this.api.state.cash += m.reward + bonus; this.api.state.rep = (this.api.state.rep || 0) + 1;
-    this.api.state.completed = (this.api.state.completed || 0) + 1;
-    this.api.hud.showToast(`MISSION PASSED — ${m.name}  +$${(m.reward + bonus).toLocaleString('en-US')}${bonus ? ' (par bonus!)' : ''}`, 4);
-    this.api.radio.sfx('sting'); this.active = false; this.done = true; this.beacon.visible = false;
-    if (this.api.onMissionComplete) this.api.onMissionComplete(this.idx);
-    if (this.idx + 1 < MISSIONS.length) { this.nextTimer = 2.5; } else this.api.hud.showToast('LEO MARIN — LEGENDA PALMA VERDE', 6);
+
+  function enterStage() {
+    const mission = MISSIONS[index];
+    if (!mission) return;
+    const s = mission.stages[stage];
+    if (!s) return;
+    stageT = 0;
+    if (s.type === 'talk') {
+      dialog.show(s.lines, () => { advance(); });
+    } else if (s.type === 'wanted') {
+      deps.setWanted(s.min);
+      advance();
+    } else if (s.type === 'combat') {
+      snapshot = deps.kills();
+      spawnFoes(s.foes ?? s.count, deps.playerPos().x, deps.playerPos().z);
+      notify(`Take down ${s.count} hostiles`);
+    } else if (s.type === 'combatCars') {
+      snapshot = deps.carsDestroyed();
+      const p = deps.playerPos();
+      spawnConvoy(p.x + 20, p.z);
+      notify(`Destroy ${s.count} convoy cars`);
+    } else if (s.type === 'hold') {
+      notify(`Hold position — ${s.seconds}s`);
+    }
   }
-  failMission(reason) {
-    this.api.hud.showToast(`${reason} — mission failed, try again`, 3);
-    this.api.radio.sfx('busted'); this.failTimer = 3; this.active = false;
-  }
-  update(dt, ctx) {
-    if (this.nextTimer > 0) { this.nextTimer -= dt; if (this.nextTimer <= 0) this.start(this.idx + 1); return; }
-    if (this.failTimer > 0) { this.failTimer -= dt; if (this.failTimer <= 0) this.start(this.idx); return; }
-    if (this.raceActive) { if (!this.api.dialog.active) this.updateRace(dt, ctx); return; }
-    if (!this.active) { this.beacon.visible = false; return; }
-    if (this.api.dialog.active) return;
-    const s = this.stageDef; if (!s) return;
-    this.totalTimer += dt; this.stageTimer += dt;
-    if (s.timer && this.stageTimer > s.timer) { this.failMission('Too slow'); return; }
-    if (s.t === 'talk') {
-      if (!this.talkStarted) { this.talkStarted = true; this.api.radio.duck(true); this.api.dialog.show(s.lines, () => { this.api.radio.duck(false); this.completeStage(); }); }
+
+  function advance() {
+    const mission = MISSIONS[index];
+    stage++;
+    if (stage >= mission.stages.length) {
+      completeMission(mission);
       return;
     }
-    const d = this.distTo(ctx.pos);
-    if (s.t === 'reach') {
-      if (s.drive && !ctx.driving) { /* need a car */ }
-      else if (d < s.r) this.completeStage();
-    } else if (s.t === 'hold') {
-      if (d < s.r) { this.holdTimer += dt; if (this.holdTimer >= s.t) this.completeStage(); } else this.holdTimer = 0;
-    } else if (s.t === 'combat') {
-      if ((ctx.kills || 0) >= s.n) this.completeStage();
-    } else if (s.t === 'escape') {
-      if (d < s.r) {
-        this.escTimer += dt;
-        if (this.escTimer > 4) { this.api.state.wanted = 0; this.completeStage(); }
-      } else this.escTimer = 0;
-    } else if (s.t === 'wanted') {
-      if ((ctx.wanted || 0) >= s.n) this.completeStage();
-    }
-    const o = this.objective();
-    if (o) {
-      this.beacon.visible = true; this.beacon.position.set(o.x, 0, o.z);
-      const p = 1 + Math.sin(this.totalTimer * 3) * 0.12; this.beacon.scale.set(p, 1, p);
-    } else this.beacon.visible = false;
+    enterStage();
   }
-  hudText(pos) {
-    if (this.raceActive) {
-      const cp = RACE.cps[this.raceCp];
-      const d = pos ? Math.round(Math.hypot(pos.x - cp.x, pos.z - cp.z)) : 0;
-      return `RACE — ${RACE.name} · checkpoint ${this.raceCp + 1}/${RACE.cps.length} · ${Math.round(this.raceTimer)}s · ${d}m · $${RACE.reward.toLocaleString('en-US')}`;
-    }
-    if (!this.mission) return '';
-    const s = this.stageDef, f = this.facedStages();
-    if (!this.active) return this.done ? `MISSION ${this.idx + 1}/8 — ${this.mission.name} · PASSED` : '';
-    const d = pos ? Math.round(this.distTo(pos)) : 0;
-    const label = s.label || (s.t === 'talk' ? `Talk to ${s.lines[0].who}` : this.mission.name);
-    let extra = '';
-    if (s.t === 'hold') extra = ` · ${Math.max(0, Math.ceil(s.t - this.holdTimer))}s`;
-    if (s.t === 'escape' && this.escTimer > 0) extra = ` · laying low ${Math.ceil(this.escTimer)}/4s`;
-    if (s.timer) extra += ` · ${Math.max(0, Math.ceil(s.timer - this.stageTimer))}s left`;
-    const nx = f[this.stageNo()];
-    if (nx) extra += ` · NEXT: ${nx.label || nx.t}`;
-    return `MISSION ${this.idx + 1}/8 — ${this.mission.name} · ${this.stageNo()}/${f.length} · ${label}${d ? ` — ${d}m` : ''}${extra}`;
+
+  function completeMission(mission) {
+    clearFoes();
+    const underPar = missionT <= mission.par;
+    const total = mission.reward + (underPar ? 250 : 0);
+    reward({ cash: total, rep: mission.rep, unlock: mission.unlock, missionId: mission.id, underPar });
+    notify(`Mission Passed — ${mission.title} · +$${total.toLocaleString('en-US')}${underPar ? ' (par bonus!)' : ''}`);
+    if (mission.id === 8) notify('LEO MARIN — LEGENDA PALMA VERDE');
+    index = -1;
+    nextTimer = 2.5;
+    if (deps.onComplete) deps.onComplete(mission);
   }
-  objectiveText() {
-    if (!this.active || !this.stageDef) return null;
-    return this.stageDef.label || this.mission.name;
+
+  function failMission(mission, reason) {
+    clearFoes();
+    notify(`Mission Failed — ${reason}. Try again.`);
+    failTimer = 3;
+    if (deps.onFail) deps.onFail(mission);
   }
+
+  return {
+    get active() {
+      return index >= 0;
+    },
+    get mission() {
+      return index >= 0 ? MISSIONS[index] : null;
+    },
+    get foes() {
+      return foes;
+    },
+    get convoy() {
+      return convoy;
+    },
+    get race() {
+      return race;
+    },
+    start(i) {
+      index = i;
+      stage = 0;
+      missionT = 0;
+      // A fresh start cancels any pending auto-advance or retry, or the
+      // previous mission's 2.5 s timer would hijack this one mid-play.
+      nextTimer = 0;
+      failTimer = 0;
+      enterStage();
+    },
+    abort() {
+      clearFoes();
+      index = -1;
+      race = null;
+    },
+    // Story state for the HUD: title, visible stage progress, next line,
+    // distance to the current reach/hold target.
+    hud(world) {
+      if (race) {
+        const cp = RACE.checkpoints[race.cp];
+        const d = Math.round(Math.hypot(cp[0] - world.x, cp[1] - world.z));
+        return {
+          title: `RACE — ${RACE.name}`,
+          stage: `checkpoint ${race.cp + 1}/${RACE.checkpoints.length} · ${Math.round(race.t)}s · ${d}m · $${RACE.prize}`,
+          next: race.cp + 1 < RACE.checkpoints.length ? 'Next checkpoint ahead' : 'Finish line!',
+          dist: d,
+        };
+      }
+      if (index < 0) return null;
+      const mission = MISSIONS[index];
+      const shown = visibleStages(mission);
+      const current = mission.stages[stage];
+      const visibleIndex = shown.indexOf(current);
+      const label = current?.label ?? '';
+      let dist = null; // only reach/hold stages have a distance to show
+      if (current && (current.type === 'reach' || current.type === 'hold')) {
+        dist = Math.round(Math.hypot(current.x - world.x, current.z - world.z));
+      }
+      const next = shown[visibleIndex + 1]?.label ?? 'Finish';
+      return {
+        title: `${mission.id}/8 · ${mission.title}`,
+        stage: visibleIndex >= 0 ? `stage ${visibleIndex + 1}/${shown.length} · ${label}` : label,
+        next: `NEXT · ${next}`,
+        dist,
+      };
+    },
+    // The current reach/hold target, for the minimap GPS line.
+    target() {
+      if (race) {
+        const cp = RACE.checkpoints[race.cp];
+        return { x: cp[0], z: cp[1] };
+      }
+      if (index < 0) return null;
+      const s = MISSIONS[index].stages[stage];
+      if (s && (s.type === 'reach' || s.type === 'hold')) return { x: s.x, z: s.z };
+      return null;
+    },
+    startRace(world) {
+      if (race) return;
+      void world;
+      race = { cp: 0, t: 0 };
+      raceRivals = [];
+      for (let i = 0; i < 2; i++) {
+        const rival = createCar(scene, {
+          x: 36 + (i - 0.5) * 6, z: -144 + 8, heading: 0,
+          color: i === 0 ? 0x4c7dc9 : 0xc94c4c, maxSpeed: i === 0 ? 30 : 28,
+        });
+        rival.cp = 0;
+        rival.finished = false;
+        raceRivals.push(rival);
+      }
+      notify(`Race started — ${RACE.name} · 7 checkpoints · $${RACE.prize}`);
+    },
+    get rivals() {
+      return raceRivals;
+    },
+    update(dt, world) {
+      // Race runs on its own clock; the story waits until it ends.
+      if (race) {
+        race.t += dt;
+        const cp = RACE.checkpoints[race.cp];
+        if (Math.hypot(cp[0] - world.x, cp[1] - world.z) < 7) {
+          race.cp++;
+          if (race.cp >= RACE.checkpoints.length) {
+            const underPar = race.t <= RACE.par;
+            const total = RACE.prize + (underPar ? 250 : 0);
+            reward({ cash: total, rep: 0, raceWin: true, raceTime: race.t, underPar });
+            notify(`Race Won — +$${total.toLocaleString('en-US')}${underPar ? ' (par bonus!)' : ''}`);
+            for (const r of raceRivals) r.remove();
+            raceRivals = [];
+            race = null;
+            if (deps.onRaceEnd) deps.onRaceEnd(true);
+            return;
+          }
+          notify(`Checkpoint ${race.cp}/${RACE.checkpoints.length}`);
+        }
+        for (const rival of raceRivals) {
+          if (rival.finished) continue;
+          const target = RACE.checkpoints[rival.cp];
+          const dx = target[0] - rival.x;
+          const dz = target[1] - rival.z;
+          if (Math.hypot(dx, dz) < 7) {
+            rival.cp++;
+            if (rival.cp >= RACE.checkpoints.length) {
+              rival.finished = true;
+              notify('A rival finished the race — you lost this one. Try again from Pause.');
+              for (const r of raceRivals) r.remove();
+              raceRivals = [];
+              race = null;
+              if (deps.onRaceEnd) deps.onRaceEnd(false);
+              return;
+            }
+            continue;
+          }
+          // Rubber-band: rivals speed up when behind, ease off when ahead.
+          const gap = Math.hypot(world.x - rival.x, world.z - rival.z);
+          const targetSpeed = rival.maxSpeed * (1 + THREE.MathUtils.clamp(gap / 120, -0.12, 0.15));
+          const wantHeading = Math.atan2(dx, dz);
+          let diff = wantHeading - rival.heading;
+          while (diff > Math.PI) diff -= Math.PI * 2;
+          while (diff < -Math.PI) diff += Math.PI * 2;
+          rival.heading += THREE.MathUtils.clamp(diff, -1.6 * dt, 1.6 * dt);
+          rival.speed = Math.min(targetSpeed, rival.maxSpeed * 1.05);
+          rival.x += Math.sin(rival.heading) * rival.speed * dt;
+          rival.z += Math.cos(rival.heading) * rival.speed * dt;
+          rival.mesh.position.set(rival.x, 0, rival.z);
+          rival.mesh.rotation.y = rival.heading;
+        }
+        return;
+      }
+
+      if (failTimer > 0) {
+        failTimer -= dt;
+        if (failTimer <= 0 && index >= 0) {
+          stage = 0;
+          enterStage();
+        }
+        return;
+      }
+      if (nextTimer > 0) {
+        nextTimer -= dt;
+        if (nextTimer <= 0) {
+          const next = MISSIONS.findIndex((m) => !deps.isDone(m.id));
+          if (next >= 0) this.start(next);
+        }
+        return;
+      }
+      if (index < 0) return;
+      const mission = MISSIONS[index];
+      const s = mission.stages[stage];
+      if (!s) return;
+      missionT += dt;
+      stageT += dt;
+
+      if (s.type === 'talk') return; // completes via the dialog callback
+      if (s.type === 'reach') {
+        if (s.timer && stageT > s.timer) {
+          failMission(mission, 'Out of time');
+          return;
+        }
+        if (Math.hypot(s.x - world.x, s.z - world.z) <= s.r) advance();
+      } else if (s.type === 'hold') {
+        if (Math.hypot(s.x - world.x, s.z - world.z) > s.r) {
+          stageT = 0; // stepping out resets the hold
+        } else if (stageT >= s.seconds) {
+          advance();
+        }
+      } else if (s.type === 'combat') {
+        // Foes shamble toward the player while the fight lasts.
+        for (const foe of foes) {
+          if (!foe.alive) continue;
+          const dx = world.x - foe.x;
+          const dz = world.z - foe.z;
+          const d = Math.hypot(dx, dz) || 1;
+          foe.x += (dx / d) * 1.5 * dt;
+          foe.z += (dz / d) * 1.5 * dt;
+          foe.mesh.position.set(foe.x, 0, foe.z);
+          foe.mesh.rotation.y = Math.atan2(dx, dz);
+        }
+        if (deps.kills() - snapshot >= s.count) advance();
+      } else if (s.type === 'combatCars') {
+        if (deps.carsDestroyed() - snapshot >= s.count) advance();
+      } else if (s.type === 'escape') {
+        if (world.wanted === 0) advance();
+      }
+    },
+  };
 }

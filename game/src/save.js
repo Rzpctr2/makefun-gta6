@@ -1,53 +1,62 @@
-// Save / load through localStorage: position, heading, cash, play time and
-// whether the player was driving. A save is only a starting point — the city
-// itself is rebuilt from the seed every launch.
-export const SAVE_KEY = 'palma-verde.save.v1';
+// Save games live in localStorage under one key. The shape is versioned so
+// a future build can migrate instead of crashing on an old slot; a corrupt
+// slot is treated as no save at all, never as an error screen.
 
-export function saveGame(state) {
+import { SAVE_KEY } from './config.js';
+
+export function blankSave() {
+  return {
+    version: 1,
+    cash: 250,
+    rep: 0,
+    day: 1,
+    minutes: 9 * 60,
+    missionsDone: [],
+    unlocked: { pistol: false, smg: false, sport: false },
+    stats: { kills: 0, takedowns: 0, escapes: 0, raceWins: 0, raceBest: null },
+    player: { x: 22, z: 22, heading: 0 },
+  };
+}
+
+export function loadSave() {
   try {
-    localStorage.setItem(SAVE_KEY, JSON.stringify({
-      x: Math.round(state.x * 100) / 100,
-      z: Math.round(state.z * 100) / 100,
-      yaw: Math.round(state.yaw * 1000) / 1000,
-      cash: state.cash,
-      seconds: Math.round(state.seconds),
-      inCar: !!state.inCar,
-      mission: state.mission || 0,
-      rep: state.rep || 0,
-      completed: state.completed || 0,
-      raceWon: !!state.raceWon,
-      raceWins: state.raceWins || 0,
-      raceBest: state.raceBest || 0,
-      escapes: state.escapes || 0,
-      kills: state.kills || 0,
-      has_pistol: !!state.has_pistol,
-      has_smg: !!state.has_smg,
-      savedAt: Date.now(),
-    }));
+    const raw = localStorage.getItem(SAVE_KEY);
+    if (!raw) return null;
+    const parsed = JSON.parse(raw);
+    if (!parsed || parsed.version !== 1) return null;
+    const save = blankSave();
+    return {
+      ...save,
+      ...parsed,
+      unlocked: { ...save.unlocked, ...(parsed.unlocked ?? {}) },
+      stats: { ...save.stats, ...(parsed.stats ?? {}) },
+      player: { ...save.player, ...(parsed.player ?? {}) },
+    };
+  } catch {
+    return null;
+  }
+}
+
+export function writeSave(save) {
+  try {
+    localStorage.setItem(SAVE_KEY, JSON.stringify({ ...save, version: 1 }));
     return true;
   } catch {
     return false;
   }
 }
 
-export function loadGame() {
-  try {
-    const raw = localStorage.getItem(SAVE_KEY);
-    if (!raw) return null;
-    const data = JSON.parse(raw);
-    if (typeof data.x !== 'number' || typeof data.z !== 'number') return null;
-    return data;
-  } catch {
-    return null;
-  }
-}
-
-export function hasSave() {
-  return loadGame() !== null;
-}
-
 export function clearSave() {
   try {
     localStorage.removeItem(SAVE_KEY);
-  } catch { /* private mode: ignore */ }
+  } catch {
+    // Storage may be unavailable (private mode); the game plays on regardless.
+  }
+}
+
+// One line for the Continue button: "Mission 3/8 · $1,250 · REP 2 · 24%".
+export function describeSave(save, percentComplete) {
+  const missions = save.missionsDone.length;
+  const clock = `${String(Math.floor(save.minutes / 60)).padStart(2, '0')}:${String(save.minutes % 60).padStart(2, '0')}`;
+  return `Mission ${missions}/8 · $${save.cash.toLocaleString('en-US')} · REP ${save.rep} · ${percentComplete}% · Day ${save.day}, ${clock}`;
 }
